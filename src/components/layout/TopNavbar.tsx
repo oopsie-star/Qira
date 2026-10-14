@@ -45,12 +45,15 @@ function ProjectSwitcher() {
 
   return (
     <div ref={ref} className="relative">
+      {/* py-1.5 and a single radius: at py-2 with rounded-2xl this button stood
+          nearly as tall as the 56px bar, so it read as squeezed against both
+          edges rather than sitting inside it. */}
       <button
         onClick={() => setOpen((value) => !value)}
-        className="flex min-w-0 max-w-[52vw] items-center justify-between gap-2 rounded-2xl border border-white/10 bg-surface-card/10 px-3 py-2 text-left text-white transition hover:bg-surface-card/15 sm:max-w-none sm:min-w-[176px] sm:gap-3 sm:rounded-xl xl:min-w-[200px]"
+        className="flex min-w-0 max-w-[52vw] items-center justify-between gap-2 rounded-xl border border-white/10 bg-surface-card/10 px-3 py-1.5 text-left text-white transition hover:bg-surface-card/15 sm:max-w-none sm:min-w-[176px] sm:gap-3 xl:min-w-[200px]"
       >
         <div className="min-w-0">
-          <p className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-white/70 sm:block">{t('project.current')}</p>
+          <p className="hidden text-[10px] font-medium uppercase text-white/50 sm:block">{t('project.current')}</p>
           <p className="truncate text-sm font-semibold">{activeProject?.name ?? t('project.noProjects')}</p>
         </div>
         <ChevronDown size={16} className="text-white/70" />
@@ -452,8 +455,8 @@ export function TopNavbar({ onToggleSidebar }: { onToggleSidebar: () => void }) 
 
   return (
     <>
-      <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-qira-anthracite px-2.5 shadow-sm sm:px-3 lg:px-4">
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+      <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-qira-anthracite px-3 shadow-sm sm:px-4 lg:px-5">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-4">
           {/* Hamburger — mobile only */}
           <button
             onClick={onToggleSidebar}
@@ -463,14 +466,18 @@ export function TopNavbar({ onToggleSidebar }: { onToggleSidebar: () => void }) 
             <Menu size={20} />
           </button>
 
+          {/* Caption + value at the same rhythm as the project switcher beside it:
+              the two blocks used to disagree on both size and letter-spacing,
+              which is what made the bar read as heavy and mismatched. The wide
+              tracking is gone — at 10px it only smeared the word out. */}
           <div className="hidden min-w-0 sm:block">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">{t('nav.workspace')}</p>
-            <h1 className="text-base font-semibold text-white">{currentLabel}</h1>
+            <p className="text-[10px] font-medium uppercase text-white/50">{t('nav.workspace')}</p>
+            <h1 className="truncate text-sm font-semibold text-white">{currentLabel}</h1>
           </div>
           <ProjectSwitcher />
         </div>
 
-        <div className="flex flex-shrink-0 items-center gap-1 sm:gap-1.5 lg:gap-2">
+        <div className="flex flex-shrink-0 items-center gap-1.5 sm:gap-2 lg:gap-2.5">
           <div className="hidden items-center -space-x-2 xl:flex">
             {projectMembers.slice(0, 5).map((member) => (
               <UserAvatar key={member.id} profile={member.profile ?? null} size={30} muted={!member.profile} />

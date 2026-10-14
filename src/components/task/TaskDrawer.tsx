@@ -272,6 +272,24 @@ export function TaskDrawer() {
     setOpenTaskId(null)
   }
 
+  // Escape closes it. The designer's complaint was that the panel is hard to
+  // get out of: on desktop there is no backdrop to click (that is deliberate —
+  // the list behind stays clickable so you can jump between issues), which left
+  // one small X as the only way out. handleClose persists drafts first, so this
+  // cannot lose an edit in progress.
+  //
+  // Guarded on the things that own Escape first: the prototype modal and the
+  // mention popup each sit on top of this and should take the key themselves.
+  useEffect(() => {
+    if (!openTaskId || prototypeOpen || mention) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return
+      void handleClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  })
+
   async function handleDelete() {
     if (!window.confirm(t('task.deleteConfirm', { title: currentTask.title }))) return
     clearTaskContext()
@@ -524,7 +542,8 @@ export function TaskDrawer() {
               type="button"
               onClick={handleClose}
               aria-label={t('common.close')}
-              className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              title={`${t('common.close')} (Esc)`}
+              className="rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900"
             >
               <X size={18} />
             </button>
