@@ -326,7 +326,7 @@ export function AttachmentUpload({
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
         className={[
-          'cursor-pointer rounded-2xl border-2 border-dashed px-4 py-3 text-center transition',
+          'cursor-pointer rounded-2xl border border-dashed px-4 py-3 text-center transition',
           dragOver ? 'border-qira-pistachio bg-qira-pistachio-lt' : 'border-slate-200 bg-slate-50 hover:border-slate-300',
         ].join(' ')}
       >

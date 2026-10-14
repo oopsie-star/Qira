@@ -146,16 +146,16 @@
   }
 
   :root.dark {
-    --c-surface-card: 21 27 35;
-    --c-slate-50: 27 34 44;
-    --c-slate-100: 35 44 56;
-    --c-slate-200: 46 57 71;
-    --c-slate-300: 61 74 90;
-    --c-slate-400: 137 149 166;
-    --c-slate-500: 161 172 187;
-    --c-slate-600: 185 195 207;
-    --c-slate-700: 210 217 226;
-    --c-slate-800: 228 233 239;
+    --c-surface-card: 20 28 40;
+    --c-slate-50: 26 34 48;
+    --c-slate-100: 33 44 62;
+    --c-slate-200: 32 42 58;
+    --c-slate-300: 44 57 78;
+    --c-slate-400: 135 148 168;
+    --c-slate-500: 160 171 189;
+    --c-slate-600: 184 194 209;
+    --c-slate-700: 209 216 228;
+    --c-slate-800: 227 232 240;
     --c-slate-900: 241 245 249;
     --c-slate-950: 0 0 0;
     --c-rose-50: 76 5 25;
@@ -277,9 +277,9 @@
     --c-qira-graphite: 140 153 168;
     --c-text-primary: 232 237 244;
     --c-text-secondary: 154 167 184;
-    --c-surface-board: 15 20 26;
-    --c-surface-sidebar: 20 26 33;
-    --c-border-default: 46 57 71;
+    --c-surface-board: 13 19 32;
+    --c-surface-sidebar: 18 25 38;
+    --c-border-default: 32 42 58;
     color-scheme: dark;
   }
 }
@@ -306,6 +306,24 @@
     /* Prevent iOS from auto-inflating text in landscape, keep our sizes intentional */
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+  }
+
+  /* Form controls default to the browser's own field colour, which does not
+     follow our palette: in the dark theme that paints a lighter grey box behind
+     anything that did not set a background itself — most visibly the task
+     title, which is a bare textarea sitting on the drawer's card.
+     Transparent by default, so a control shows whatever surface it sits on.
+     Anything that genuinely wants its own fill still sets a bg-* utility, and
+     utilities outrank this layer. Checkboxes and radios are excluded: those are
+     native painted widgets, not surfaces.
+     The exclusion goes inside :where() so it adds no specificity — written as a
+     bare :not() chain this rule outranked bg-* utilities and turned every input
+     that HAD asked for a background transparent. */
+  input:where(:not([type='checkbox']):not([type='radio'])),
+  textarea,
+  select {
+    background-color: transparent;
+    color: inherit;
   }
 
   body {

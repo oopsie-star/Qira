@@ -109,7 +109,7 @@ export function MarkdownEditor({ value, onChange, onBlur, placeholder, rows = 8,
 
   if (!editing) {
     return value.trim() ? (
-      <div className="group rounded-2xl border border-slate-200">
+      <div className="group rounded-2xl bg-slate-50">
         <div className="flex items-center justify-end border-b border-slate-100 px-1.5 py-1 opacity-0 transition group-hover:opacity-100">
           <button
             type="button"
@@ -135,7 +135,7 @@ export function MarkdownEditor({ value, onChange, onBlur, placeholder, rows = 8,
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200">
+    <div className="rounded-2xl bg-slate-50">
       <div className="flex items-center gap-0.5 border-b border-slate-200 px-1.5 py-1">
         {tools.map((tool) => (
           <button
