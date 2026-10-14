@@ -15,14 +15,6 @@ export function StatusDropdown({ value, onChange, disabled = false }: StatusDrop
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
 
-  if (disabled) {
-    return (
-      <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-        <StatusBadge status={value} />
-      </div>
-    )
-  }
-
   useEffect(() => {
     function handleMouseDown(event: MouseEvent) {
       if (ref.current && !ref.current.contains(event.target as Node)) {
@@ -32,6 +24,19 @@ export function StatusDropdown({ value, onChange, disabled = false }: StatusDrop
     document.addEventListener('mousedown', handleMouseDown)
     return () => document.removeEventListener('mousedown', handleMouseDown)
   }, [])
+
+  // Below the hook, not above it. Returning early before useEffect meant a
+  // locked dropdown rendered one hook fewer than an unlocked one, so React threw
+  // "Rendered more hooks than during the previous render" the moment `disabled`
+  // flipped on a mounted instance — which is what happens when you click from an
+  // ordinary task straight to a shared one, since the drawer reuses this.
+  if (disabled) {
+    return (
+      <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+        <StatusBadge status={value} />
+      </div>
+    )
+  }
 
   return (
     <div ref={ref} className="relative">

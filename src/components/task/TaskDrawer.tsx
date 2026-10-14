@@ -78,6 +78,13 @@ export function TaskDrawer() {
   const { locale, t } = useI18n()
   const currentProjectKey = useCurrentProjectKey()
   const [searchParams, setSearchParams] = useSearchParams()
+  const urlTaskId = searchParams.get('task')
+  // The id the user just dismissed. Closing clears both the store and the URL,
+  // and those are two different update sources — if they ever land in separate
+  // renders, the "fill an empty one" rule below would see a stale ?task= and
+  // reopen what was just closed. This makes that impossible rather than relying
+  // on them being batched together.
+  const dismissedTaskId = useRef<string | null>(null)
 
   const [savedFlash, setSavedFlash] = useState(false)
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -196,29 +203,49 @@ export function TaskDrawer() {
     }
   }, [task, fetchTaskContext, clearTaskContext, logActivityEvent])
 
-  // Restore the open task from the URL once on mount, so a hard refresh or a
-  // shared deep link (e.g. /board?task=<id>) re-opens the same task instead of
-  // dropping the user back on the board.
+  // ── Keeping ?task=<id> and the open task in step ────────────────────────────
+  //
+  // This used to be a mount-only read of the URL plus a mirror that deleted the
+  // parameter whenever openTaskId was null. That broke every shared link that
+  // pointed at a task OUTSIDE the project you already had open: the drawer
+  // adopted the id from the URL, then GlobalLayout resolved the project key and
+  // called setActiveProjectId, which clears openTaskId along with the rest of
+  // the previous project's state — and the mirror then stripped ?task= from the
+  // address, so even a refresh could not recover it. A link into the project
+  // you were already in worked, which is why it looked random.
+  //
+  // So: an OPEN task owns the URL, and the URL fills an EMPTY one. The second
+  // rule is what makes a deep link survive the project switch, because it fires
+  // again the moment that switch nulls the id.
   useEffect(() => {
-    const param = searchParams.get('task')
-    if (param && !openTaskId) setOpenTaskId(param)
-    // mount-only — intentionally reads the initial URL
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Mirror the open task into the URL (?task=<id>) so refresh/back/share work.
-  useEffect(() => {
-    const current = searchParams.get('task')
-    if (openTaskId && current !== openTaskId) {
+    if (openTaskId && openTaskId !== urlTaskId) {
       const next = new URLSearchParams(searchParams)
       next.set('task', openTaskId)
       setSearchParams(next, { replace: true })
-    } else if (!openTaskId && current) {
-      const next = new URLSearchParams(searchParams)
-      next.delete('task')
-      setSearchParams(next, { replace: true })
     }
-  }, [openTaskId, searchParams, setSearchParams])
+  }, [openTaskId, urlTaskId, searchParams, setSearchParams])
+
+  useEffect(() => {
+    if (!openTaskId && urlTaskId && urlTaskId !== dismissedTaskId.current) setOpenTaskId(urlTaskId)
+  }, [openTaskId, urlTaskId, setOpenTaskId])
+
+  // Escape closes it. The designer's complaint was that the panel is hard to
+  // get out of: on desktop there is no backdrop to click (that is deliberate —
+  // the list behind stays clickable so you can jump between issues), which left
+  // one small X as the only way out. handleClose persists drafts first, so this
+  // cannot lose an edit in progress.
+  //
+  // Guarded on the things that own Escape first: the prototype modal and the
+  // mention popup each sit on top of this and should take the key themselves.
+  useEffect(() => {
+    if (!openTaskId || prototypeOpen || mention) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return
+      void handleClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  })
 
   if (!task) return null
 
@@ -266,34 +293,27 @@ export function TaskDrawer() {
     }
   }
 
+  function dropTaskParam(taskId: string | null) {
+    dismissedTaskId.current = taskId
+    const next = new URLSearchParams(searchParams)
+    next.delete('task')
+    setSearchParams(next, { replace: true })
+  }
+
   async function handleClose() {
     await persistDrafts()
     clearTaskContext()
     setOpenTaskId(null)
+    // Must clear the URL too: the rule above reopens whatever ?task= still
+    // names as soon as openTaskId goes null.
+    dropTaskParam(currentTask.id)
   }
-
-  // Escape closes it. The designer's complaint was that the panel is hard to
-  // get out of: on desktop there is no backdrop to click (that is deliberate —
-  // the list behind stays clickable so you can jump between issues), which left
-  // one small X as the only way out. handleClose persists drafts first, so this
-  // cannot lose an edit in progress.
-  //
-  // Guarded on the things that own Escape first: the prototype modal and the
-  // mention popup each sit on top of this and should take the key themselves.
-  useEffect(() => {
-    if (!openTaskId || prototypeOpen || mention) return
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== 'Escape') return
-      void handleClose()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  })
 
   async function handleDelete() {
     if (!window.confirm(t('task.deleteConfirm', { title: currentTask.title }))) return
     clearTaskContext()
     setOpenTaskId(null)
+    dropTaskParam(currentTask.id)
     await deleteTask(currentTask.id)
   }
 
@@ -602,7 +622,7 @@ export function TaskDrawer() {
               />
             </div>
 
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-surface-card p-4 shadow-sm">
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-surface-card p-4">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{t('task.description')}</p>
                 {hasRichDescription && (
@@ -639,7 +659,7 @@ export function TaskDrawer() {
                 but out of the way below the description, not competing with it
                 for the reader's first glance. */}
             <div className="mt-6 grid gap-6 sm:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="mb-2 text-sm font-semibold text-slate-900">{t('task.reporter')}</p>
                 <div className="flex items-center gap-3">
                   <UserAvatar profile={reporterDisplay?.person} size={34} muted={!reporterDisplay} />
@@ -654,7 +674,7 @@ export function TaskDrawer() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="mb-2 text-sm font-semibold text-slate-900">{t('task.dueDate')}</p>
                 <div className="flex items-center gap-2 text-sm text-slate-600">
                   <Calendar size={16} />
@@ -663,7 +683,7 @@ export function TaskDrawer() {
               </div>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-surface-card p-4 shadow-sm">
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-surface-card p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">{t('task.subtasks')}</p>
@@ -698,7 +718,7 @@ export function TaskDrawer() {
                       key={subtask.id}
                       type="button"
                       onClick={() => setOpenTaskId(subtask.id)}
-                      className="flex w-full items-start justify-between rounded-2xl border border-slate-200 px-4 py-3 text-left transition hover:bg-slate-50"
+                      className="flex w-full items-start justify-between rounded-2xl bg-slate-50 px-4 py-3 text-left transition hover:bg-slate-100"
                     >
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -716,13 +736,13 @@ export function TaskDrawer() {
               </div>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-surface-card p-4 shadow-sm">
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-surface-card p-4">
               <div className="flex items-center gap-2">
                 <MessageSquare size={16} className="text-slate-500" />
                 <p className="text-sm font-semibold text-slate-900">{t('task.comments')}</p>
               </div>
 
-              <div className="relative mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <div className="relative mt-4 rounded-2xl bg-slate-50 p-3">
                 <textarea
                   ref={commentRef}
                   value={commentBody}
@@ -805,7 +825,7 @@ export function TaskDrawer() {
                     )
 
                     return (
-                    <div key={comment.id} className="rounded-2xl border border-slate-200 p-4">
+                    <div key={comment.id} className="rounded-2xl bg-slate-50 p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-3">
                           <UserAvatar profile={comment.author} size={32} muted={!comment.author} />
@@ -833,14 +853,14 @@ export function TaskDrawer() {
               </div>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-surface-card p-4 shadow-sm">
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-surface-card p-4">
               <p className="text-sm font-semibold text-slate-900">{t('task.activity')}</p>
               <div className="mt-4 space-y-3">
                 {taskActivities.length === 0 ? (
                   <p className="rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-500">{t('task.noActivity')}</p>
                 ) : (
                   taskActivities.map((activity) => (
-                    <div key={activity.id} className="rounded-2xl border border-slate-200 p-4">
+                    <div key={activity.id} className="rounded-2xl bg-slate-50 p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-3">
                           <UserAvatar profile={activity.actor} size={30} muted={!activity.actor} />
@@ -1105,7 +1125,7 @@ export function TaskDrawer() {
                  />
                </MetaSection>
 
-               <div className="rounded-2xl border border-slate-200 bg-surface-card p-4 text-sm text-slate-600 shadow-sm">
+               <div className="rounded-2xl border border-slate-200 bg-surface-card p-4 text-sm text-slate-600">
                  <div className="flex items-center gap-2 text-slate-900">
                    <Timer size={16} />
                    <p className="font-semibold">{t('task.daysInStatus')}</p>

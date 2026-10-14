@@ -126,7 +126,7 @@ export function SprintContainer({
 
   return (
     <>
-      <section className="overflow-hidden rounded-[20px] border border-slate-200 bg-surface-card shadow-sm">
+      <section className="overflow-hidden rounded-[20px] border border-slate-200 bg-surface-card">
         <div className="border-b border-slate-200 px-3 py-3 sm:px-4">
           <div className="flex items-start gap-3">
             <button

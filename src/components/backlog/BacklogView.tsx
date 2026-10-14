@@ -437,7 +437,7 @@ function TaskListSection({
   const [editingTitle, setEditingTitle] = useState(false)
 
   return (
-    <section key={sectionKey} className="overflow-hidden rounded-[20px] border border-slate-200 bg-surface-card shadow-sm">
+    <section key={sectionKey} className="overflow-hidden rounded-[20px] border border-slate-200 bg-surface-card">
       <div className="border-b border-slate-200 px-3 py-3 sm:px-4">
         <div className="flex items-start gap-3">
           <button
@@ -989,7 +989,7 @@ export function BacklogView() {
           </section>
         ) : (
           <>
-            <section className="shrink-0 rounded-[20px] border border-slate-200 bg-surface-card px-3 py-3 shadow-sm sm:px-4">
+            <section className="shrink-0 rounded-[20px] border border-slate-200 bg-surface-card px-3 py-3 sm:px-4">
               <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-2">
                   <div className="relative min-w-0 flex-1">
@@ -1112,7 +1112,7 @@ export function BacklogView() {
 
             <div className="space-y-3">
               {showGlobalEmptyState ? (
-                <section className="rounded-[20px] border border-slate-200 bg-surface-card px-4 py-6 text-sm text-slate-500 shadow-sm">
+                <section className="rounded-[20px] border border-slate-200 bg-surface-card px-4 py-6 text-sm text-slate-500">
                   <p>{t('backlog.noVisibleIssues')}</p>
                   <button
                     type="button"

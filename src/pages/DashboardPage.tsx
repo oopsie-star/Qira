@@ -59,7 +59,7 @@ function AttentionTile({ label, count, Icon, tone, to, onClick }: AttentionTileP
     </>
   )
 
-  const className = `block rounded-2xl border p-3.5 text-left shadow-sm transition ${toneClasses}`
+  const className = `block rounded-2xl border p-3.5 text-left transition ${toneClasses}`
   if (to) return <Link to={to} className={className}>{body}</Link>
   return <button type="button" onClick={onClick} className={`${className} w-full`}>{body}</button>
 }
@@ -71,7 +71,7 @@ function ProjectCard({ summary }: { summary: ProjectSummary }) {
   return (
     <Link
       to={projectPath(project.key, 'board')}
-      className="group flex flex-col rounded-2xl border border-slate-200 bg-surface-card p-4 shadow-sm transition hover:border-qira-pistachio/60 hover:shadow-md"
+      className="group flex flex-col rounded-2xl border border-slate-200 bg-surface-card p-4 transition hover:border-qira-pistachio/60 hover:shadow-md"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">

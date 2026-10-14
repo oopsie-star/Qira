@@ -455,7 +455,7 @@ export function TopNavbar({ onToggleSidebar }: { onToggleSidebar: () => void }) 
 
   return (
     <>
-      <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-qira-anthracite px-3 shadow-sm sm:px-4 lg:px-5">
+      <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-qira-anthracite px-3 sm:px-4 lg:px-5">
         <div className="flex min-w-0 items-center gap-3 sm:gap-4">
           {/* Hamburger — mobile only */}
           <button

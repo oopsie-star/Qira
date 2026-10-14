@@ -107,17 +107,17 @@ export function LeftSidebar({ open, onClose }: LeftSidebarProps) {
       <div className="min-h-0 flex-1" />
 
       <div className="p-2">
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <div className="rounded-2xl bg-slate-50 p-4">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
             {t('project.current')}
           </p>
           {/* Stats for the ACTIVE project — its issues and its team. */}
           <div className="mt-3 grid grid-cols-2 gap-2">
-            <div className="rounded-xl bg-surface-card p-3 shadow-sm">
+            <div className="rounded-xl bg-surface-card p-3">
               <p className="text-xs text-slate-500">{t('project.tasks')}</p>
               <p className="mt-1 truncate text-lg font-semibold text-slate-900">{projectTaskCount}</p>
             </div>
-            <div className="rounded-xl bg-surface-card p-3 shadow-sm">
+            <div className="rounded-xl bg-surface-card p-3">
               <p className="text-xs text-slate-500">{t('nav.people')}</p>
               <p className="mt-1 text-lg font-semibold text-slate-900">{projectMembers.length}</p>
             </div>

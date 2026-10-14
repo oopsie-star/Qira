@@ -185,7 +185,7 @@ export function AttachmentUpload({
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-surface-card p-4 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-surface-card p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <p className="text-sm font-semibold text-slate-900">{t('task.attachments')}</p>
         {typeof MediaRecorder !== 'undefined' && (
