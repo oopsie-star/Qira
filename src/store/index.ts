@@ -115,9 +115,11 @@ const PROJECT_MEMBER_SELECT = `
   profile:profiles(*)
 `
 
+// The FK is named: task_comments has more than one column pointing at
+// profiles over time, and an unnamed embed fails outright (PGRST201) when so.
 const TASK_COMMENT_SELECT = `
   *,
-  author:profiles(*)
+  author:profiles!task_comments_author_id_fkey(*)
 `
 
 const TASK_ACTIVITY_SELECT = `

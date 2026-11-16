@@ -1,0 +1,12 @@
+-- Hotfix for 20261116020000_comment_archive.sql.
+--
+-- That migration gave task_comments a second foreign key to profiles
+-- (archived_by). PostgREST then cannot tell which one `author:profiles(*)`
+-- means and answers every such request with PGRST201 — the task drawer showed
+-- no comments, and a new comment was saved but not displayed. Every deployed
+-- bundle, old tabs included, uses that embed.
+--
+-- archived_by stays a plain uuid, as archived_by on attachment_notes could have
+-- been: it records who archived the comment; a deleted profile simply leaves an
+-- id that no longer resolves, which every reader already falls back on.
+alter table public.task_comments drop constraint if exists task_comments_archived_by_fkey;

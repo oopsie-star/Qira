@@ -9,7 +9,7 @@ const TASK_SELECT = `
   assignee:profiles!tasks_assignee_id_fkey(*),
   reporter:profiles!tasks_reporter_id_fkey(*)
 `
-const COMMENT_SELECT = `*, author:profiles(*)`
+const COMMENT_SELECT = `*, author:profiles!task_comments_author_id_fkey(*)`
 const PAGE = 1000
 const IN_CHUNK = 100
 
