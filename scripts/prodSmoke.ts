@@ -64,6 +64,12 @@ const checks: Check[] = [
     supabase.rpc('set_attachment_archived', { p_path: 'smoke/none', p_archived: true }), '42501'],
   ['Task drawer', 'archive comment (rpc)', () =>
     supabase.rpc('set_comment_archived', { p_comment: ID, p_archived: true }), '42501'],
+  // Stage 4a: starting work, the edit policy, revisions.
+  ['Task drawer', 'take in work (rpc)', () => supabase.rpc('take_in_work', { p_task: ID, p_comment: 'smoke check only' }), '42501'],
+  ['Task drawer', 'back to to do (rpc)', () => supabase.rpc('return_to_todo', { p_task: ID, p_comment: 'smoke check only' }), '42501'],
+  ['Task drawer', 'edit policy (rpc)', () => supabase.rpc('task_edit_policy', { p_task: ID }), '42501'],
+  ['Task drawer', 'new revision (rpc)', () =>
+    supabase.rpc('create_task_revision', { p_task: ID, p_title: null, p_description: null, p_attachments: [], p_comment_ids: [], p_reason: 'smoke' }), '42501'],
 ]
 
 let failed = 0
@@ -123,6 +129,11 @@ async function signedInChecks() {
     const { data: task, error: taskError } = await user.from('tasks').select(TASK_SELECT).eq('id', taskId).maybeSingle()
     report(!taskError && Boolean(task), 'Task drawer', 'fixture task', taskError?.message ?? (task ? (task as { key: string }).key : 'not visible'))
     if (!task) return
+
+    // The drawer asks the policy before saving a started task's text.
+    const { data: policy, error: policyError } = await user.rpc('task_edit_policy', { p_task: taskId })
+    report(!policyError && Boolean((policy as { edit_mode?: string } | null)?.edit_mode), 'Task drawer', 'edit policy',
+      policyError?.message ?? `edit_mode ${(policy as { edit_mode?: string }).edit_mode}`)
 
     const { data: comments, error: commentsError } = await user
       .from('task_comments').select(TASK_COMMENT_SELECT).eq('task_id', taskId).order('created_at')

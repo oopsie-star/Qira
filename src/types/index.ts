@@ -218,6 +218,12 @@ export interface Task {
   jira_board_placement?:   'board' | 'backlog' | null
   /** Set when a done/in_progress task is reworded; cleared when marked done again. Drives the orange re-check highlight. */
   formulation_changed_at: string | null
+  /** Stage 4a: when, by whom and how the ASSIGNEE started the work; null = not started. */
+  work_started_at?:     string | null
+  work_started_by?:     string | null
+  work_started_signal?: 'take_in_work' | 'implicit' | 'legacy' | null
+  /** The assignee's own words when taking it into work. */
+  work_started_note?:   string | null
   /** For a frontend task: the screen (a task in the screen-registry epic) it implements. */
   implements_screen_task_id?: string | null
   position:       number
@@ -449,6 +455,8 @@ export interface TaskComment {
   archived_by_agent?:       string | null
   /** Archived because its content was moved into the task description. */
   folded_into_description?: boolean
+  /** 'take_in_work' / 'return_to_todo' for the comments those actions post. */
+  comment_type?:            'comment' | 'take_in_work' | 'return_to_todo'
   /** Why it was archived, as given by whoever archived it. */
   archive_reason?:          string | null
   edited_at?:               string | null

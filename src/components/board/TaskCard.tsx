@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Draggable } from '@hello-pangea/dnd'
-import { Calendar, ChevronDown, ChevronRight, CircleAlert, CornerDownRight, Flame, ListTree, Paperclip, Users } from 'lucide-react'
+import { Play, Calendar, ChevronDown, ChevronRight, CircleAlert, CornerDownRight, Flame, ListTree, Paperclip, Users } from 'lucide-react'
 import { StatusBadge } from '@/components/common/IssueBadges'
 import { AssigneeAvatars } from '@/components/common/AssigneeAvatars'
 import { useI18n } from '@/lib/i18n'
@@ -8,6 +8,7 @@ import { formatDate } from '@/lib/format'
 import { isTaskBlocked } from '@/lib/ops'
 import { canManageProject } from '@/lib/permissions'
 import { useStore } from '@/store'
+import { workStartedSummary } from '@/lib/workStart'
 import { isTerminalStatus, isUniversalTask, type Task, type TaskStatus } from '@/types'
 
 // A board column is ~250px wide, so the subtask rows carry a status dot with a
@@ -36,6 +37,7 @@ export function TaskCard({ task, index }: TaskCardProps) {
   const profileRole = useStore((state) => state.profile?.role)
   const activeProjectRole = useStore((state) => state.activeProjectRole)
   const blocked = isTaskBlocked(task.id, taskLinks, tasks)
+  const workStarted = workStartedSummary(task, members, locale)
   const highPriority = task.priority === 'high' || task.priority === 'highest'
   const universal = isUniversalTask(task)
   const canManage = canManageProject(activeProjectRole, profileRole === 'admin')
@@ -154,6 +156,17 @@ export function TaskCard({ task, index }: TaskCardProps) {
                 </button>
               ))}
             </div>
+          )}
+
+          {workStarted && (
+            <p
+              className="mt-2 truncate text-[11px] text-slate-600"
+              title={workStarted.note ? `${workStarted.who}, ${workStarted.when} — „${workStarted.note}“` : undefined}
+            >
+              <Play size={10} className="mr-1 inline-block align-[-1px] text-qira-pistachio" />
+              {workStarted.who}, {workStarted.when}
+              {workStarted.note ? <> — „{workStarted.note}“</> : null}
+            </p>
           )}
 
           <div className="mt-2.5 flex items-center gap-2">

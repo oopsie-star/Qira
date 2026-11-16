@@ -3,6 +3,7 @@ import { FunctionsHttpError } from '@supabase/supabase-js'
 import { getErrorMessage } from '@/lib/errors'
 import { isTaskBlocked } from '@/lib/ops'
 import { dedupeRecipients } from '@/lib/notify'
+import { workTransitionFor } from '@/lib/workStart'
 import { computeWeeklyDigest, isSameLocalDay, type WeeklyDigestStats } from '@/lib/weeklyDigest'
 import { supabase } from '@/lib/supabase'
 import { EPIC_COLORS } from '@/types'
@@ -56,6 +57,28 @@ import {
   PROJECT_DELETION_REQUEST_SELECT,
   TASK_FIELD_CHANGE_SELECT,
 } from './selects'
+
+/** task_edit_policy, for the signed-in user (stage 4a). */
+export interface EditPolicy {
+  task_id: string
+  key: string
+  work_started: boolean
+  started_at: string | null
+  started_by: string | null
+  started_by_name: string | null
+  signal: 'take_in_work' | 'implicit' | 'legacy' | null
+  /** An owner may edit a started task in place — after choosing to. */
+  owner: boolean
+  edit_mode: 'in_place' | 'owner_approval_required' | 'rejected'
+}
+
+export interface TaskRevisionInput {
+  title?: string
+  description?: string
+  attachments: string[]
+  commentIds: string[]
+  reason: string
+}
 
 export interface WeeklyDigestEntry {
   projectId: string
@@ -494,6 +517,19 @@ interface AppState {
   deleteTask: (id: string) => Promise<void>
   moveTask: (taskId: string, toStatus: TaskStatus, toIndex: number) => Promise<void>
   patchTask: (id: string, fields: Partial<Task>) => void
+  /**
+   * Stage 4a: every status change goes through here. When it needs the
+   * "Take into work" or "back to To do" window, the window opens and `apply`
+   * is NOT called — the window's RPC does the move. Otherwise `apply` runs.
+   */
+  workTransition: { taskId: string; kind: 'take' | 'return' } | null
+  requestStatusChange: (taskId: string, toStatus: TaskStatus, apply: () => Promise<void> | void) => Promise<void>
+  cancelWorkTransition: () => void
+  /** Throws with the database's message, for the window to show. */
+  confirmWorkTransition: (comment: string) => Promise<void>
+  refreshTask: (taskId: string) => Promise<void>
+  getEditPolicy: (taskId: string) => Promise<EditPolicy>
+  createTaskRevision: (taskId: string, input: TaskRevisionInput) => Promise<{ new_task_id: string; new_key: string }>
   /** Local-only, like patchTask: for when the database was already written (e.g. by an RPC). */
   patchEpic: (id: string, fields: Partial<Epic>) => void
   patchSprint: (id: string, fields: Partial<Sprint>) => void
@@ -736,6 +772,7 @@ export const useStore = create<AppState>((set, get) => {
     weeklyDigest: null,
     notifications: [],
     taskComments: [], archivedTaskComments: [],
+    workTransition: null,
     taskActivities: [],
     taskFieldChanges: [],
     tasks: [],
@@ -781,8 +818,21 @@ export const useStore = create<AppState>((set, get) => {
   clearTaskSelection: () => set({ selectedTaskIds: [] }),
 
   bulkUpdateTasks: async (fields) => {
-    const ids = get().selectedTaskIds
+    let ids = get().selectedTaskIds
     if (!ids.length) return
+    // Back to To do from In progress always comes with a reason (stage 4a),
+    // which a bulk change cannot ask for: those tasks are left as they are.
+    if (fields.status === 'todo') {
+      const inProgress = new Set(get().tasks.filter((task) => task.status === 'in_progress').map((task) => task.id))
+      const skipped = ids.filter((id) => inProgress.has(id))
+      if (skipped.length) {
+        get().notify(get().profile?.locale === 'en'
+          ? `${skipped.length} in progress left as they are — move each back to To do on its own, with the reason.`
+          : `${skipped.length} в работе не изменены — верните каждую в «К выполнению» отдельно, с причиной.`)
+        ids = ids.filter((id) => !inProgress.has(id))
+        if (!ids.length) return
+      }
+    }
     const sprints = get().sprints
 
     // When moving to a sprint, inherit the sprint's epic (mirrors single update).
@@ -2350,6 +2400,74 @@ export const useStore = create<AppState>((set, get) => {
       set({ tasks: previousTasks })
       throw error
     }
+  },
+
+  requestStatusChange: async (taskId, toStatus, apply) => {
+    const task = get().tasks.find((item) => item.id === taskId)
+    const kind = task ? workTransitionFor(task, toStatus, get().profile?.id, get().activeProjectRole) : null
+    if (kind) {
+      set({ workTransition: { taskId, kind } })
+      return
+    }
+    await apply()
+  },
+
+  cancelWorkTransition: () => set({ workTransition: null }),
+
+  confirmWorkTransition: async (comment) => {
+    const pending = get().workTransition
+    if (!pending) return
+    const task = get().tasks.find((item) => item.id === pending.taskId)
+    const { error } = pending.kind === 'take'
+      ? await supabase.rpc('take_in_work', { p_task: pending.taskId, p_comment: comment })
+      : await supabase.rpc('return_to_todo', { p_task: pending.taskId, p_comment: comment })
+    if (error) throw new Error(error.message)
+    set({ workTransition: null })
+    await get().refreshTask(pending.taskId)
+    if (get().openTaskId === pending.taskId) await get().fetchTaskContext(pending.taskId)
+
+    // Tell the task's author, as a status change always did.
+    const profile = get().profile
+    if (profile && task) {
+      const actorName = profile.full_name || profile.email
+      await notifyRecipients(dedupeRecipients([task.reporter_id], profile.id), {
+        projectId: task.project_id,
+        taskId: task.id,
+        notificationType: 'automation',
+        title: pending.kind === 'take'
+          ? `${actorName} took ${task.key} into work`
+          : `${actorName} moved ${task.key} back to To do`,
+        body: comment,
+        telegramRecipientIds: allProjectMemberIdsExcept(profile.id),
+      })
+    }
+  },
+
+  refreshTask: async (taskId) => {
+    const { data } = await supabase.from('tasks').select(TASK_SELECT).eq('id', taskId).maybeSingle()
+    if (data) set((state) => ({ tasks: replaceTask(state.tasks, data as Task) }))
+  },
+
+  getEditPolicy: async (taskId) => {
+    const { data, error } = await supabase.rpc('task_edit_policy', { p_task: taskId })
+    if (error) throw new Error(error.message)
+    return data as EditPolicy
+  },
+
+  createTaskRevision: async (taskId, input) => {
+    const { data, error } = await supabase.rpc('create_task_revision', {
+      p_task: taskId,
+      p_title: input.title ?? null,
+      p_description: input.description ?? null,
+      p_attachments: input.attachments,
+      p_comment_ids: input.commentIds,
+      p_reason: input.reason,
+    })
+    if (error) throw new Error(error.message)
+    const result = data as { new_task_id: string; new_key: string }
+    await Promise.all([get().refreshTask(taskId), get().refreshTask(result.new_task_id)])
+    await get().fetchTaskLinks()
+    return result
   },
 
   patchTask: (id, fields) => {

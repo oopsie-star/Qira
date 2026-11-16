@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { IssueTypeBadge, PriorityBadge } from '@/components/common/IssueBadges'
 import { UserAvatar } from '@/components/common/UserAvatar'
 import { AttachmentUpload } from './AttachmentUpload'
+import { EditPolicyDialog, RevisionDialog, type EditChoice } from './EditPolicyDialogs'
 import { VoiceCommentary } from './VoiceCommentary'
 import { TaskChangeHistory } from './TaskChangeHistory'
 import { JiraDescriptionRenderer } from './JiraDescriptionRenderer'
@@ -25,7 +26,8 @@ import { ShareTaskMenu } from './ShareTaskMenu'
 import { PrototypeModal } from './PrototypeModal'
 import { placeholderAsPerson, resolveAssigneeFields, taskAssigneeDisplay, taskReporterDisplay } from '@/lib/people'
 import { useCurrentProjectKey } from '@/lib/projectRoutes'
-import { useStore } from '@/store'
+import { useStore, type EditPolicy } from '@/store'
+import { workStartedSummary } from '@/lib/workStart'
 import { checkAppVersion, useAppIsStale } from '@/lib/appVersion'
 import { getErrorMessage } from '@/lib/errors'
 import { isArchivedStatus, isUniversalTask, type IssuePriority, type IssueType, type Profile, type Task, type TaskLinkType, type TaskStatus } from '@/types'
@@ -72,6 +74,8 @@ export function TaskDrawer() {
   const createTaskComment = useStore((state) => state.createTaskComment)
   const createTaskLink = useStore((state) => state.createTaskLink)
   const setTaskCommentArchived = useStore((state) => state.setTaskCommentArchived)
+  const requestStatusChange = useStore((state) => state.requestStatusChange)
+  const getEditPolicy = useStore((state) => state.getEditPolicy)
   const deleteTaskLink = useStore((state) => state.deleteTaskLink)
   const fetchTaskContext = useStore((state) => state.fetchTaskContext)
   const clearTaskContext = useStore((state) => state.clearTaskContext)
@@ -149,6 +153,10 @@ export function TaskDrawer() {
   const [subtaskTitle, setSubtaskTitle] = useState('')
   const [commentBody, setCommentBody] = useState('')
   const [commentArchiveOpen, setCommentArchiveOpen] = useState(false)
+  // Stage 4a: asking before a started task's text is saved.
+  const [editPrompt, setEditPrompt] = useState<{ policy: EditPolicy; resolve: (choice: EditChoice) => void } | null>(null)
+  const [revisionDraft, setRevisionDraft] = useState<{ title: string; description: string } | null>(null)
+  const editPromptOpen = useRef(false)
   const [commentArchiveBusy, setCommentArchiveBusy] = useState<string | null>(null)
   const [commentArchiveError, setCommentArchiveError] = useState<string | null>(null)
   // An outdated tab must not archive or restore: same rule as attachments.
@@ -287,6 +295,7 @@ export function TaskDrawer() {
   if (!task) return null
 
   const currentTask = task
+  const workStarted = workStartedSummary(currentTask, members, locale)
   const hasRichDescription = Boolean(currentTask.jira_description_adf)
   const selectedSprint = currentTask.sprint_id
     ? (sprints.find((sprint) => sprint.id === currentTask.sprint_id) ?? null)
@@ -307,10 +316,38 @@ export function TaskDrawer() {
   }
 
   async function persistDrafts() {
+    // One question at a time: a blur while the window is open must not ask again.
+    if (editPromptOpen.current) return
     const nextFields: Partial<Task> = {}
 
     if (draftTitle.trim() && draftTitle.trim() !== currentTask.title) nextFields.title = draftTitle.trim()
     if (draftDescription !== currentTask.description) nextFields.description = draftDescription
+
+    // A started task's text: the owner chooses in place or a new revision;
+    // anyone else is told why not and offered a revision. The database
+    // enforces the same policy whatever the app does.
+    if ((nextFields.title !== undefined || nextFields.description !== undefined) && currentTask.work_started_at) {
+      let policy: EditPolicy | null = null
+      try {
+        policy = await getEditPolicy(currentTask.id)
+      } catch {
+        policy = null
+      }
+      if (policy?.work_started) {
+        editPromptOpen.current = true
+        const choice = await new Promise<EditChoice>((resolve) => setEditPrompt({ policy: policy as EditPolicy, resolve }))
+        setEditPrompt(null)
+        editPromptOpen.current = false
+        if (choice !== 'in_place') {
+          const draft = { title: draftTitle.trim() || currentTask.title, description: draftDescription }
+          delete nextFields.title
+          delete nextFields.description
+          setDraftTitle(currentTask.title)
+          setDraftDescription(currentTask.description)
+          if (choice === 'revision') setRevisionDraft(draft)
+        }
+      }
+    }
 
     const parsedLabels = parseLabels(draftLabels)
     if (parsedLabels.join('|') !== currentTask.labels.join('|')) nextFields.labels = parsedLabels
@@ -550,7 +587,7 @@ export function TaskDrawer() {
             {showStartWork && (
               <button
                 type="button"
-                onClick={() => { if (canStartWork) void quickUpdate({ status: 'in_progress' }) }}
+                onClick={() => { if (canStartWork) void requestStatusChange(currentTask.id, 'in_progress', () => quickUpdate({ status: 'in_progress' })) }}
                 disabled={!canStartWork}
                 title={startWorkHint}
                 aria-label={t('task.startWork')}
@@ -646,6 +683,13 @@ export function TaskDrawer() {
               rows={2}
               className="hidden w-full resize-none border-none px-0 text-xl font-semibold leading-tight text-slate-900 outline-none disabled:cursor-default lg:block"
             />
+
+            {workStarted && (
+              <p className="mt-2 rounded-xl bg-qira-pistachio-lt/50 px-3 py-2 text-sm text-slate-700">
+                <span className="font-semibold">{t('work.startedLabel')}:</span> {workStarted.who}, {workStarted.when}
+                {workStarted.note ? <> — „{workStarted.note}“</> : <span className="text-slate-500"> · {t(`work.signal.${workStarted.signal}`)}</span>}
+              </p>
+            )}
 
             <VoiceCommentary attachments={currentTask.attachments} taskId={currentTask.id} />
 
@@ -999,7 +1043,7 @@ export function TaskDrawer() {
               <MetaSection title={t('task.status')}>
                 <StatusDropdown
                   value={currentTask.status}
-                  onChange={(status: TaskStatus) => void quickUpdate({ status })}
+                  onChange={(status: TaskStatus) => void requestStatusChange(currentTask.id, status, () => quickUpdate({ status }))}
                   disabled={statusLocked}
                 />
                 {statusLocked && (
@@ -1252,6 +1296,22 @@ export function TaskDrawer() {
 
       {prototypeOpen && canPrototype && (
         <PrototypeModal task={currentTask} onClose={() => setPrototypeOpen(false)} />
+      )}
+
+      {editPrompt && <EditPolicyDialog policy={editPrompt.policy} onChoose={editPrompt.resolve} />}
+
+      {revisionDraft && (
+        <RevisionDialog
+          task={currentTask}
+          title={revisionDraft.title}
+          description={revisionDraft.description}
+          comments={taskComments}
+          onCancel={() => setRevisionDraft(null)}
+          onDone={(newTaskId) => {
+            setRevisionDraft(null)
+            setOpenTaskId(newTaskId)
+          }}
+        />
       )}
     </>
   )

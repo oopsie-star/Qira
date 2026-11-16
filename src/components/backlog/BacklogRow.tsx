@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Draggable } from '@hello-pangea/dnd'
-import { AlertTriangle, BookOpenText, Calendar, CheckSquare, ChevronDown, ChevronRight, CircleAlert, Code2, FlaskConical, GripVertical, History, ListTree, MoreHorizontal, Music, Paperclip, Palette, RefreshCw, Server, Sparkles, Target } from 'lucide-react'
+import { Play, AlertTriangle, BookOpenText, Calendar, CheckSquare, ChevronDown, ChevronRight, CircleAlert, Code2, FlaskConical, GripVertical, History, ListTree, MoreHorizontal, Music, Paperclip, Palette, RefreshCw, Server, Sparkles, Target } from 'lucide-react'
 import { PriorityBadge, StatusBadge } from '@/components/common/IssueBadges'
 import { AssigneeAvatars } from '@/components/common/AssigneeAvatars'
 import { previewKind } from '@/lib/attachments'
@@ -9,6 +9,7 @@ import { formatDate } from '@/lib/format'
 import { DISCIPLINE_LABELS, taskDisciplines, type Discipline } from '@/lib/discipline'
 import { getSupersededByLink, isSuperseded, isTaskBlocked, isUnstartedTodo } from '@/lib/ops'
 import { useStore } from '@/store'
+import { workStartedSummary } from '@/lib/workStart'
 import { isUniversalTask, type IssueType, type Task } from '@/types'
 
 const disciplineIconAndClasses: Record<Discipline, { icon: typeof Target; className: string }> = {
@@ -96,6 +97,7 @@ export function BacklogRow({ task, index, mobile = false, dragDisabled = false, 
   // concern from the colour, so it stays untouched here.)
   const unstarted = isUnstartedTodo(task)
   const reworded = Boolean(task.formulation_changed_at)
+  const workStarted = workStartedSummary(task, members, locale)
   const blocked = isTaskBlocked(task.id, taskLinks, tasks)
   const disciplines = useMemo(
     () => taskDisciplines(task, members, placeholders, projectMembers),
@@ -211,6 +213,14 @@ export function BacklogRow({ task, index, mobile = false, dragDisabled = false, 
                       </span>
                     )}
                     <StatusBadge status={task.status} />
+                    {workStarted && (
+                      <span
+                        title={`${t('work.startedLabel')}: ${workStarted.who}, ${workStarted.when}${workStarted.note ? ` — „${workStarted.note}“` : ''}`}
+                        className="inline-flex items-center text-qira-pistachio"
+                      >
+                        <Play size={12} />
+                      </span>
+                    )}
                     {/* Clears the flag by marking it done — the only way out, so a
                         reworded task can't quietly go back to looking finished. */}
                     {reworded && (

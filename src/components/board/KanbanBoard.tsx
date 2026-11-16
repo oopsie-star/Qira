@@ -20,6 +20,16 @@ export function KanbanBoard() {
   const activeSprintId = useStore((state) => state.activeSprintId)
   const moveTask = useStore((state) => state.moveTask)
   const updateTask = useStore((state) => state.updateTask)
+  const requestStatusChange = useStore((state) => state.requestStatusChange)
+
+  // Stage 4a: the assignee dragging To do -> In progress gets the "Take into
+  // work" window, anyone dragging In progress -> To do the reason window; the
+  // card stays where it was until they confirm. Other moves are immediate.
+  function move(taskId: string, toStatus: TaskStatus, toIndex: number) {
+    const current = tasks.find((item) => item.id === taskId)
+    if (!current || current.status === toStatus) return moveTask(taskId, toStatus, toIndex)
+    return requestStatusChange(taskId, toStatus, () => moveTask(taskId, toStatus, toIndex))
+  }
   const { t } = useI18n()
 
   const [quickFilters, setQuickFilters] = useState<string[]>([])
@@ -168,7 +178,7 @@ export function KanbanBoard() {
       if (sourceLane !== targetLane) {
         void updateTask(draggableId, { epic_id: targetLane === NO_EPIC_LANE ? null : targetLane })
       }
-      void moveTask(draggableId, targetStatus as TaskStatus, destination.index)
+      void move(draggableId, targetStatus as TaskStatus, destination.index)
       return
     }
 
@@ -176,7 +186,7 @@ export function KanbanBoard() {
     // Closed column is a no-op (close a task via its status dropdown); dragging a
     // closed task back onto a workflow column restores it to that status.
     if (!STATUS_COLUMNS.includes(destination.droppableId as TaskStatus)) return
-    moveTask(draggableId, destination.droppableId as TaskStatus, destination.index)
+    void move(draggableId, destination.droppableId as TaskStatus, destination.index)
   }
 
   return (

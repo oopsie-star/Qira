@@ -33,7 +33,10 @@
 alter table public.tasks
   add column if not exists work_started_at     timestamptz,
   add column if not exists work_started_by     uuid,
-  add column if not exists work_started_signal text;
+  add column if not exists work_started_signal text,
+  -- The assignee's own words when taking it into work, for cards: reading the
+  -- comment would cost a query per card. The comment itself stays in the thread.
+  add column if not exists work_started_note   text;
 
 alter table public.tasks drop constraint if exists tasks_work_started_signal_check;
 alter table public.tasks add constraint tasks_work_started_signal_check
@@ -171,7 +174,8 @@ begin
      set status = case when v_shared then status else 'in_progress' end,
          work_started_at = coalesce(work_started_at, now()),
          work_started_by = case when work_started_signal = 'take_in_work' then work_started_by else v_uid end,
-         work_started_signal = 'take_in_work'
+         work_started_signal = 'take_in_work',
+         work_started_note = coalesce(case when work_started_signal = 'take_in_work' then work_started_note end, v_body)
    where id = p_task;
 
   insert into public.task_comments (project_id, task_id, author_id, body, comment_type)
