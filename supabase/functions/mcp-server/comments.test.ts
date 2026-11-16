@@ -79,6 +79,7 @@ Deno.test('get_task with include_archived lists archived comments with who, when
     archived_by_email: 'anna@test',
     archived_by_agent: null,
     folded_into_description: true,
+    reason: null,
   }])
 })
 
@@ -106,6 +107,27 @@ Deno.test('archive_comment with folded_into_description records the reason', asy
   const out = await archiveComment(db as never, { comment: C_PERSON, folded_into_description: true, agent_name: 'chatgpt' })
   assertEquals(out.folded_into_description, true)
   assertEquals(comment(db, C_PERSON).folded_into_description, true)
+})
+
+Deno.test("archive_comment sends the reason, and the author of a person's comment is notified", async () => {
+  const db = fixture()
+  const out = await archiveComment(db as never, {
+    comment: C_PERSON, folded_into_description: true, reason: '  moved into the acceptance criteria  ', agent_name: 'chatgpt',
+  })
+  assertEquals(db.rpcCalls[0].params.p_reason, 'moved into the acceptance criteria')
+  assertEquals(out.reason, 'moved into the acceptance criteria')
+  assertEquals(db.tables.notifications, [{ profile_id: 'anna', task_id: TASK, folded: true, reason: 'moved into the acceptance criteria' }])
+  const after = await getTask(db as never, { task: 'P-1', include_archived: true }) as Record<string, unknown>
+  const archived = (after.archived_comments as { id: string; reason: string | null }[]).find((c) => c.id === C_PERSON)
+  assertEquals(archived?.reason, 'moved into the acceptance criteria')
+})
+
+Deno.test("archiving an agent's own comment notifies no one, and restore sends no reason", async () => {
+  const db = fixture()
+  await archiveComment(db as never, { comment: C_CHATGPT, reason: 'superseded', agent_name: 'chatgpt' })
+  assertEquals(db.tables.notifications, undefined)
+  await restoreComment(db as never, { comment: C_CHATGPT, reason: 'ignored', agent_name: 'chatgpt' })
+  assertEquals(db.rpcCalls[1].params.p_reason, null)
 })
 
 Deno.test('archive_comment twice is a no-op the second time, with no second activity row', async () => {

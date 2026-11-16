@@ -388,8 +388,11 @@ export function AttachmentUpload({
                       setError(null)
                       setArchiveBusy(path)
                       try {
-                        await setAttachmentArchived(path, false)
-                        onArchiveChange?.([...attachments, path], (archivedAttachments ?? []).filter((item) => item !== path))
+                        const { position } = await setAttachmentArchived(path, false)
+                        // Back where it was, as the database put it; the end if unknown.
+                        const live = attachments.filter((item) => item !== path)
+                        const at = position === null ? live.length : Math.min(position, live.length)
+                        onArchiveChange?.([...live.slice(0, at), path, ...live.slice(at)], (archivedAttachments ?? []).filter((item) => item !== path))
                       } catch (err) {
                         setError(getErrorMessage(err))
                       } finally {

@@ -359,6 +359,10 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
           type: 'boolean',
           description: 'True when the content of the comment now lives in the task description (you updated the description with it).',
         },
+        reason: {
+          type: 'string',
+          description: 'Why it is archived, in a sentence. If the comment was written by a person, they are notified and shown this reason. Optional, at most 500 characters.',
+        },
         agent_name: AGENT_NAME_PROPERTY,
         confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
       },

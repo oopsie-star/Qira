@@ -154,6 +154,18 @@ export function TaskDrawer() {
   // An outdated tab must not archive or restore: same rule as attachments.
   const appIsStale = useAppIsStale()
 
+  // Who took a comment out of the working area: the AI agent by name, else the
+  // project member. archived_by has no foreign key to embed, so it is resolved
+  // against the members already loaded.
+  function archiverLabel(comment: { archived_by?: string | null; archived_by_agent?: string | null }) {
+    const agent = comment.archived_by_agent
+    if (agent === 'claude') return 'Claude'
+    if (agent === 'chatgpt') return 'ChatGPT'
+    const person = members.find((member) => member.id === comment.archived_by) ?? null
+    const name = person ? formatPerson(person) : '—'
+    return agent === 'qira-assistant' ? `${name} (${t('comments.viaAssistant')})` : name
+  }
+
   async function changeCommentArchived(commentId: string, archived: boolean) {
     setCommentArchiveError(null)
     if (appIsStale || (await checkAppVersion())) {
@@ -927,6 +939,11 @@ export function TaskDrawer() {
                                 </button>
                               )}
                             </div>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {t('comments.archivedBy')}: {archiverLabel(comment)}
+                              {comment.archived_at ? ` · ${formatDate(locale, comment.archived_at)}` : ''}
+                              {comment.archive_reason ? ` · ${comment.archive_reason}` : ''}
+                            </p>
                             <MarkdownRenderer source={comment.body} members={members} className="mt-1 text-slate-500" />
                           </div>
                         )

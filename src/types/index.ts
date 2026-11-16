@@ -449,6 +449,8 @@ export interface TaskComment {
   archived_by_agent?:       string | null
   /** Archived because its content was moved into the task description. */
   folded_into_description?: boolean
+  /** Why it was archived, as given by whoever archived it. */
+  archive_reason?:          string | null
   edited_at?:               string | null
   author?:     Profile | null
 }

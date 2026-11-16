@@ -22,6 +22,8 @@ interface CommentToolArgs {
 
 interface ArchiveCommentArgs extends CommentToolArgs {
   folded_into_description?: boolean
+  /** Shown to the comment's author in their notification and in the archive. */
+  reason?: string
 }
 
 interface UpdateCommentArgs extends CommentToolArgs {
@@ -33,6 +35,7 @@ export interface CommentArchiveOutcome {
   task_id: string
   archived: boolean
   folded_into_description: boolean
+  reason?: string | null
   changed: boolean
 }
 
@@ -102,6 +105,7 @@ async function archiveOrRestore(admin: SupabaseClient, args: ArchiveCommentArgs,
     p_folded: folded,
     p_actor: reporterId,
     p_agent: agentName,
+    p_reason: archived && typeof args.reason === 'string' && args.reason.trim() ? args.reason.trim().slice(0, 500) : null,
   })
   if (error) throw new ToolError(`Failed to ${archived ? 'archive' : 'restore'} comment ${comment.id}: ${error.message}`)
   const outcome = data as CommentArchiveOutcome

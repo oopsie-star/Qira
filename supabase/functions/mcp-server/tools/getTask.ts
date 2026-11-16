@@ -50,7 +50,7 @@ export async function getTask(admin: SupabaseClient, args: GetTaskArgs) {
   const [commentsRes, activitiesRes, fieldChangesRes, attachmentNotesRes, lastAgentRes, linksRes] = await Promise.all([
     admin
       .from('task_comments')
-      .select('id, author_id, body, created_at, edited_at, archived_at, archived_by, archived_by_agent, folded_into_description')
+      .select('id, author_id, body, created_at, edited_at, archived_at, archived_by, archived_by_agent, folded_into_description, archive_reason')
       .eq('task_id', task.id)
       .order('created_at'),
     admin
@@ -200,6 +200,7 @@ export async function getTask(admin: SupabaseClient, args: GetTaskArgs) {
             archived_by_email: c.archived_by ? emailById.get(c.archived_by) ?? c.archived_by : null,
             archived_by_agent: c.archived_by_agent ?? null,
             folded_into_description: c.folded_into_description === true,
+            reason: c.archive_reason ?? null,
           })),
         }
       : {}),

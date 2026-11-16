@@ -248,17 +248,25 @@ export const fakeSetCommentArchived: RpcHandler = (params, db) => {
   const archived = params.p_archived as boolean
   const folded = archived && params.p_folded === true
   const isArchived = row.archived_at != null
+  const reason = (params.p_reason as string | null | undefined) ?? null
   const base = { comment_id: row.id, task_id: row.task_id, archived }
-  if (archived === isArchived && (!archived || (row.folded_into_description === true) === folded)) {
-    return { data: { ...base, folded_into_description: row.folded_into_description === true, changed: false }, error: null }
+  if (archived === isArchived && (!archived || ((row.folded_into_description === true) === folded && (reason === null || reason === row.archive_reason)))) {
+    return { data: { ...base, folded_into_description: row.folded_into_description === true, reason: row.archive_reason ?? null, changed: false }, error: null }
   }
   if (archived) {
-    if (!isArchived) Object.assign(row, { archived_at: '2026-11-16T12:00:00Z', archived_by: params.p_actor, archived_by_agent: params.p_agent })
+    if (!isArchived) {
+      Object.assign(row, { archived_at: '2026-11-16T12:00:00Z', archived_by: params.p_actor, archived_by_agent: params.p_agent })
+      // The SQL notifies a person whose comment an agent archives.
+      if (params.p_agent && row.author_id !== params.p_actor) {
+        ;(db.tables.notifications ??= []).push({ profile_id: row.author_id, task_id: row.task_id, folded, reason })
+      }
+    }
     row.folded_into_description = folded
+    if (reason !== null) row.archive_reason = reason
   } else {
-    Object.assign(row, { archived_at: null, archived_by: null, archived_by_agent: null, folded_into_description: false })
+    Object.assign(row, { archived_at: null, archived_by: null, archived_by_agent: null, folded_into_description: false, archive_reason: null })
   }
-  return { data: { ...base, folded_into_description: folded, changed: true }, error: null }
+  return { data: { ...base, folded_into_description: folded, reason: archived ? (row.archive_reason ?? null) : null, changed: true }, error: null }
 }
 
 /** update_comment_body: live comments only, edit recorded, changed: false when identical. */

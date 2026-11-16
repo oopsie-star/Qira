@@ -2175,7 +2175,7 @@ export const useStore = create<AppState>((set, get) => {
     const byDate = (left: TaskComment, right: TaskComment) => left.created_at.localeCompare(right.created_at)
     const moved: TaskComment = archived
       ? { ...comment, archived_at: new Date().toISOString(), archived_by: get().profile?.id ?? null }
-      : { ...comment, archived_at: null, archived_by: null, archived_by_agent: null, folded_into_description: false }
+      : { ...comment, archived_at: null, archived_by: null, archived_by_agent: null, folded_into_description: false, archive_reason: null }
     set((state) => archived
       ? {
           taskComments: state.taskComments.filter((item) => item.id !== commentId),
