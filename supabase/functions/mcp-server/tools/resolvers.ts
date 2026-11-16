@@ -87,5 +87,5 @@ export async function resolveMcpAgentProfileId(admin: SupabaseClient): Promise<s
   if (!data) throw new ToolError(`MCP agent profile "${email}" does not exist — create it before using write tools.`)
 
   cachedMcpAgentProfileId = data.id
-  return cachedMcpAgentProfileId
+  return data.id
 }
