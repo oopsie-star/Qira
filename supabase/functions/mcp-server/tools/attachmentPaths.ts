@@ -71,3 +71,43 @@ export function decodeAttachmentBase64(base64: string): Uint8Array {
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
   return bytes
 }
+
+// ChatGPT's Apps SDK can't have the model author raw file bytes as base64 text
+// (it often doesn't even have byte-level access to what the user uploaded —
+// images get turned into vision tokens before the model ever sees them). It
+// instead declares a top-level input field in _meta["openai/fileParams"] and
+// hands the tool a { download_url, file_id, mime_type?, file_name? } object at
+// call time; the server is expected to fetch the bytes itself. Claude Code
+// still sends content_base64 directly (it has real filesystem access), so
+// both paths stay supported — whichever the caller provides.
+export interface AttachmentFileRef {
+  download_url?: string
+  file_id?: string
+  mime_type?: string
+  file_name?: string
+}
+
+async function fetchAttachmentBytes(downloadUrl: string): Promise<Uint8Array> {
+  let response: Response
+  try {
+    response = await fetch(downloadUrl)
+  } catch (err) {
+    throw new ToolError(`Failed to fetch file from download_url: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  if (!response.ok) {
+    throw new ToolError(`Failed to fetch file from download_url: HTTP ${response.status}`)
+  }
+  const buffer = await response.arrayBuffer()
+  if (buffer.byteLength > MAX_ATTACHMENT_BYTES) {
+    throw new ToolError(
+      `Attachment is ${Math.round(buffer.byteLength / 1024 / 1024)}MB, which exceeds the ${MAX_ATTACHMENT_BYTES / 1024 / 1024}MB limit for files sent through MCP.`,
+    )
+  }
+  return new Uint8Array(buffer)
+}
+
+export async function resolveAttachmentBytes(args: { content_base64?: string; file?: AttachmentFileRef }): Promise<Uint8Array> {
+  if (args.file?.download_url) return fetchAttachmentBytes(args.file.download_url)
+  if (args.content_base64) return decodeAttachmentBase64(args.content_base64)
+  throw new ToolError('Provide either "content_base64" or "file" (a { download_url, file_id } reference, e.g. ChatGPT\'s openai/fileParams).')
+}

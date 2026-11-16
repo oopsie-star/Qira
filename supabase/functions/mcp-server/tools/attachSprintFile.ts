@@ -1,7 +1,7 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.8'
 
 import { checkCrossAgentConflict, resolveAgentName } from './agentGate.ts'
-import { decodeAttachmentBase64, safeFilename } from './attachmentPaths.ts'
+import { type AttachmentFileRef, resolveAttachmentBytes, safeFilename } from './attachmentPaths.ts'
 import { ToolError } from './errors.ts'
 import { resolveMcpAgentProfileId, resolveProjectByKey, resolveSprintByName } from './resolvers.ts'
 
@@ -10,6 +10,7 @@ interface AttachSprintFileArgs {
   sprint?: string
   filename?: string
   content_base64?: string
+  file?: AttachmentFileRef
   mime_type?: string
   agent_name?: string
   confirmed_cross_agent?: boolean
@@ -23,19 +24,19 @@ export async function attachSprintFile(admin: SupabaseClient, args: AttachSprint
   if (!projectKey) throw new ToolError('"project" is required.')
   if (!sprintRef) throw new ToolError('"sprint" is required.')
   if (!filename) throw new ToolError('"filename" is required.')
-  if (!args.content_base64) throw new ToolError('"content_base64" is required.')
 
   const project = await resolveProjectByKey(admin, projectKey)
   const sprint = await resolveSprintByName(admin, project.id, sprintRef)
   await checkCrossAgentConflict(admin, { type: 'sprint', id: sprint.id, label: sprintRef }, agentName, Boolean(args.confirmed_cross_agent))
 
   const reporterId = await resolveMcpAgentProfileId(admin)
-  const bytes = decodeAttachmentBase64(args.content_base64)
+  const bytes = await resolveAttachmentBytes(args)
+  const mimeType = args.mime_type || args.file?.mime_type
 
   const path = `${project.id}/sprints/${sprint.id}/${reporterId}/${Date.now()}-${safeFilename(filename)}`
   const { error: uploadError } = await admin.storage
     .from('attachments')
-    .upload(path, bytes, { contentType: args.mime_type || undefined })
+    .upload(path, bytes, { contentType: mimeType || undefined })
   if (uploadError) throw new ToolError(`Failed to upload file: ${uploadError.message}`)
 
   const { error: updateError } = await admin
@@ -47,7 +48,7 @@ export async function attachSprintFile(admin: SupabaseClient, args: AttachSprint
   const { error: noteError } = await admin
     .from('attachment_notes')
     .upsert(
-      { project_id: project.id, path, original_name: filename, mime_type: args.mime_type ?? null },
+      { project_id: project.id, path, original_name: filename, mime_type: mimeType ?? null },
       { onConflict: 'project_id,path' },
     )
   if (noteError) console.error('[mcp-server] Failed to record attachment_notes', noteError.message)
