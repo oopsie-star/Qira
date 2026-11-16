@@ -274,3 +274,16 @@ Deno.test('replace_attachment refuses a file that is already archived', async ()
     'already archived',
   )
 })
+
+Deno.test('replace_attachment finds a file that a revision moved to another task (its path still names the old one)', async () => {
+  const admin = fixture()
+  // As create_task_revision leaves it: LIVE moved from TASK to OTHER_TASK, path unchanged.
+  task(admin).attachments = [OLD]
+  task(admin, OTHER_TASK).attachments = [LIVE]
+  const content = bytesOf('package v2')
+  const result = await replaceAttachment(admin as never, { old_path: LIVE, content_base64: encodeBase64(content), agent_name: 'claude' })
+  assertEquals(task(admin, OTHER_TASK).attachments, [result.path as string])
+  assertEquals(task(admin, OTHER_TASK).archived_attachments, [LIVE])
+  assertEquals((result.path as string).split('/')[1], OTHER_TASK)
+  assertEquals(task(admin).attachments, [OLD])
+})

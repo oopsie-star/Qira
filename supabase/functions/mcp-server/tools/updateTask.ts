@@ -1,6 +1,7 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.8'
 
 import { checkCrossAgentConflict, resolveAgentName } from './agentGate.ts'
+import { editRefusal } from './editPolicy.ts'
 import { ToolError } from './errors.ts'
 import {
   resolveEpicByKeyOrTitle,
@@ -38,8 +39,7 @@ export async function updateTask(admin: SupabaseClient, args: UpdateTaskArgs) {
   await checkCrossAgentConflict(admin, { type: 'task', id: task.id, label: task.key }, agentName, Boolean(args.confirmed_cross_agent))
 
   const fields: Record<string, unknown> = {}
-  if (args.title !== undefined) fields.title = args.title
-  if (args.description !== undefined) fields.description = args.description
+  const textChange = args.title !== undefined || args.description !== undefined
   if (args.priority !== undefined) fields.priority = args.priority
   if (args.due_date !== undefined) fields.due_date = args.due_date
   if (args.labels !== undefined) fields.labels = args.labels
@@ -53,26 +53,46 @@ export async function updateTask(admin: SupabaseClient, args: UpdateTaskArgs) {
     fields.sprint_id = args.sprint ? (await resolveSprintByName(admin, task.project_id, args.sprint)).id : null
   }
 
-  if (Object.keys(fields).length === 0) {
+  if (Object.keys(fields).length === 0 && !textChange) {
     throw new ToolError('No fields to update — provide at least one of: title, description, priority, due_date, assignee_email, epic, sprint, labels.')
   }
 
-  const { data, error } = await admin
-    .from('tasks')
-    .update(fields)
-    .eq('id', task.id)
-    .select('id, key, title, status, priority')
-    .single()
-
-  if (error) throw new ToolError(`Failed to update task: ${error.message}`)
-
   const reporterId = await resolveMcpAgentProfileId(admin)
+
+  // Title and description go through the edit policy (stage 4a): in place
+  // while the assignee has not started, refused once they have. They go
+  // first, so a refusal leaves the whole call unapplied — never half of it.
+  // Nothing ever creates a new task here.
+  let editMode: string | undefined
+  if (textChange) {
+    const { data: edit, error: editError } = await admin.rpc('edit_task_text', {
+      p_task: task.id,
+      p_title: args.title ?? null,
+      p_description: args.description ?? null,
+      p_actor: reporterId,
+      p_agent: agentName,
+    })
+    if (editError) throw editRefusal(editError) ?? new ToolError(`Failed to update task: ${editError.message}`)
+    editMode = (edit as { edit_mode?: string } | null)?.edit_mode ?? 'in_place'
+  }
+
+  let data: Record<string, unknown> | null = null
+  if (Object.keys(fields).length) {
+    const res = await admin.from('tasks').update(fields).eq('id', task.id).select('id, key, title, status, priority').single()
+    if (res.error) throw new ToolError(`Failed to update task: ${res.error.message}`)
+    data = res.data
+  } else {
+    const res = await admin.from('tasks').select('id, key, title, status, priority').eq('id', task.id).single()
+    if (res.error) throw new ToolError(`Failed to read the task back: ${res.error.message}`)
+    data = res.data
+  }
+  const changed = [...(args.title !== undefined ? ['title'] : []), ...(args.description !== undefined ? ['description'] : []), ...Object.keys(fields)]
   const { error: activityError } = await admin.from('task_activities').insert({
     project_id: task.project_id,
     task_id: task.id,
     actor_id: reporterId,
     activity_type: 'task_updated',
-    message: `Updated: ${Object.keys(fields).join(', ')}`,
+    message: `Updated: ${changed.join(', ')}`,
   })
   if (activityError) {
     console.error('[mcp-server] Failed to record task_updated activity', activityError.message)
@@ -86,9 +106,9 @@ export async function updateTask(admin: SupabaseClient, args: UpdateTaskArgs) {
     task_id: task.id,
     action_type: 'update_task',
     payload: args,
-    result: data,
+    result: { ...data, ...(editMode ? { edit_mode: editMode } : {}) },
   })
   if (auditError) console.error('[mcp-server] Failed to record agent_audit_log', auditError.message)
 
-  return data
+  return { ...data, ...(editMode ? { edit_mode: editMode } : {}) }
 }

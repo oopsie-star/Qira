@@ -40,12 +40,27 @@ export async function replaceAttachment(admin: SupabaseClient, args: ReplaceAtta
 
   // Only a live file can be replaced. An archived one already is "the old
   // version"; one attached nowhere means the path is wrong.
-  const { data: owner, error: ownerError } = await admin
+  let { data: owner, error: ownerError } = await admin
     .from(table)
-    .select('attachments, archived_attachments')
+    .select('id, attachments, archived_attachments')
     .eq('id', ownerId)
     .maybeSingle()
   if (ownerError) throw new ToolError(`Failed to look up the file's owner: ${ownerError.message}`)
+  // A file moved to a new revision (create_task_revision) keeps its path, which
+  // still names the old task: find the task that holds it now.
+  let currentTaskId = taskId
+  if (taskId && !owner?.attachments?.includes(oldPath)) {
+    const { data: holder } = await admin
+      .from('tasks')
+      .select('id, attachments, archived_attachments')
+      .contains('attachments', [oldPath])
+      .limit(1)
+      .maybeSingle()
+    if (holder) {
+      owner = holder
+      currentTaskId = holder.id as string
+    }
+  }
   if (!owner?.attachments?.includes(oldPath)) {
     if (owner?.archived_attachments?.includes(oldPath)) {
       throw new ToolError(`"${oldPath}" is already archived. Attach the new file with attach_*_file instead.`)
@@ -79,7 +94,7 @@ export async function replaceAttachment(admin: SupabaseClient, args: ReplaceAtta
 
   let uploaded: Record<string, unknown>
   if (taskId) {
-    uploaded = await attachTaskFile(admin, { ...common, task: taskId })
+    uploaded = await attachTaskFile(admin, { ...common, task: currentTaskId as string })
   } else {
     const { data: project, error: projectError } = await admin.from('projects').select('key').eq('id', projectId).maybeSingle()
     if (projectError || !project) throw new ToolError(`Failed to look up the file's project: ${projectError?.message ?? 'not found'}`)
@@ -109,7 +124,7 @@ export async function replaceAttachment(admin: SupabaseClient, args: ReplaceAtta
     agent_name: agentName,
     agent_profile_id: reporterId,
     project_id: projectId,
-    task_id: taskId,
+    task_id: currentTaskId,
     epic_id: epicId,
     sprint_id: sprintId,
     action_type: 'replace_attachment',

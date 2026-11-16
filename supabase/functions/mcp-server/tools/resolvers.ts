@@ -10,7 +10,7 @@ export function isUuid(value: string): boolean {
 }
 
 const TASK_COLUMNS =
-  'id, project_id, key, title, description, status, issue_type, priority, epic_id, sprint_id, assignee_id, reporter_id, assignee_ids, due_date, attachments, archived_attachments, created_at, updated_at'
+  'id, project_id, key, title, description, status, issue_type, priority, epic_id, sprint_id, assignee_id, reporter_id, assignee_ids, due_date, attachments, archived_attachments, work_started_at, work_started_by, work_started_signal, created_at, updated_at'
 
 export async function resolveProjectByKey(admin: SupabaseClient, key: string): Promise<Project> {
   const { data, error } = await admin.from('projects').select('id, key, name').eq('key', key).maybeSingle()

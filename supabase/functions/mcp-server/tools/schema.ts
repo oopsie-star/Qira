@@ -135,12 +135,16 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
   },
   {
     name: 'update_task_status',
-    description: `Change a task's status. For any other field, use update_task instead.${CROSS_AGENT_NOTE}`,
+    description: `Change a task's status. For any other field, use update_task instead. Moving a task to in_progress is a status only: the work counts as started when its assignee takes it into work in Qira. Moving an in_progress task back to todo requires "comment" with the reason.${CROSS_AGENT_NOTE}`,
     inputSchema: {
       type: 'object',
       properties: {
         task: { type: 'string', description: 'Task key or id.' },
         status: { type: 'string', enum: TASK_STATUSES },
+        comment: {
+          type: 'string',
+          description: 'Required when moving an in_progress task back to todo: why, in at least 15 characters. Posted on the task.',
+        },
         agent_name: AGENT_NAME_PROPERTY,
         confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
       },
@@ -150,7 +154,7 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
   {
     name: 'update_task',
     description:
-      `Update a task's title, description, priority, due date, assignee, epic, sprint, or labels. For status changes, use update_task_status instead.${CROSS_AGENT_NOTE}`,
+      `Update a task's title, description, priority, due date, assignee, epic, sprint, or labels. For status changes, use update_task_status instead. Title and description follow the edit policy: once the assignee has started the work, an agent's edit is refused — show the refusal to your human and offer create_task_revision, or an owner editing it in the Qira app; never retry or work around it. Check first with get_edit_policy. The response carries edit_mode.${CROSS_AGENT_NOTE}`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -167,6 +171,69 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
         confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
       },
       required: ['task', 'agent_name'],
+    },
+  },
+  {
+    name: 'get_edit_policy',
+    description:
+      'Whether a task\'s title and description can be edited in place now: work_started (by its assignee), when, by whom, the signal (take_in_work / implicit / legacy), and edit_mode — in_place, or owner_approval_required for an agent on a started task.',
+    inputSchema: {
+      type: 'object',
+      properties: { task: { type: 'string', description: 'Task key or id.' } },
+      required: ['task'],
+    },
+  },
+  {
+    name: 'create_task_revision',
+    description:
+      `The only way to make a new revision of a task — explicitly, when its text must change after the assignee started. Creates a new To do task with the new title/description and the old task's fields, moves the files and comments you choose to it, links it as superseding the old one, archives the old one, and notifies the assignee with your reason. Use it only after your human agreed to a new revision.${CROSS_AGENT_NOTE}`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: 'Task key or id of the current task.' },
+        title: { type: 'string', description: 'New title; omit to keep the old one.' },
+        description: { type: 'string', description: 'New description; omit to keep the old one.' },
+        attachments: {
+          description: 'Live files to move to the revision: a list of paths from get_task, or "all". Default: none.',
+          oneOf: [{ type: 'array', items: { type: 'string' } }, { type: 'string', enum: ['all'] }],
+        },
+        comments: {
+          description: 'Live comments to move to the revision: a list of comment ids from get_task, or "all". Default: none.',
+          oneOf: [{ type: 'array', items: { type: 'string' } }, { type: 'string', enum: ['all'] }],
+        },
+        reason: { type: 'string', description: 'Why a new revision — one sentence; the assignee sees it.' },
+        agent_name: AGENT_NAME_PROPERTY,
+        confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
+      },
+      required: ['task', 'reason', 'agent_name'],
+    },
+  },
+  {
+    name: 'list_description_versions',
+    description:
+      'The history of a task\'s title and description: every version with who (person or agent), when, how (in_place, owner_in_place, restore…) and a line diff from the version before. Pass version to get that version\'s full text.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: 'Task key or id.' },
+        version: { type: 'integer', description: 'Optional: return this version\'s full title and description.' },
+      },
+      required: ['task'],
+    },
+  },
+  {
+    name: 'restore_description_version',
+    description:
+      `Bring back an earlier version of a task's title and description (from list_description_versions). It is an edit like any other: the edit policy applies, and it becomes a new version.${CROSS_AGENT_NOTE}`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: 'Task key or id.' },
+        version: { type: 'integer' },
+        agent_name: AGENT_NAME_PROPERTY,
+        confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
+      },
+      required: ['task', 'version', 'agent_name'],
     },
   },
   {

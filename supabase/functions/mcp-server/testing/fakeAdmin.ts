@@ -54,7 +54,7 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null; count?: num
   private patch: Row = {}
   private wantCount = false
   private headOnly = false
-  private single: 'none' | 'maybe' | 'one' = 'none'
+  private singleMode: 'none' | 'maybe' | 'one' = 'none'
   private limitN: number | null = null
 
   constructor(private db: FakeAdmin, private table: string) {}
@@ -81,6 +81,11 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null; count?: num
     return this
   }
   in(col: string, values: unknown[]) { this.predicates.push((r) => values.includes(r[col])); return this }
+  /** Array column contains every given value (PostgREST cs). */
+  contains(col: string, values: unknown[]) {
+    this.predicates.push((r) => Array.isArray(r[col]) && values.every((v) => (r[col] as unknown[]).includes(v)))
+    return this
+  }
   ilike(col: string, pattern: string) {
     const re = likeToRegExp(pattern)
     this.predicates.push((r) => typeof r[col] === 'string' && re.test(r[col] as string))
@@ -98,7 +103,8 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null; count?: num
   or(expr: string) { this.predicates.push(parseOr(expr)); return this }
   order() { return this }
   limit(n: number) { this.limitN = n; return this }
-  maybeSingle() { this.single = 'maybe'; return this }
+  maybeSingle() { this.singleMode = 'maybe'; return this }
+  single() { this.singleMode = 'one'; return this }
   delete() { this.mode = 'delete'; return this }
   update(fields: Row) { this.mode = 'update'; this.patch = fields; return this }
 
@@ -120,7 +126,8 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null; count?: num
       }
       if (this.limitN !== null) matched = matched.slice(0, this.limitN)
       if (this.headOnly) return { data: null, error: null, count: matched.length }
-      if (this.single === 'maybe') return { data: matched[0] ?? null, error: null }
+      if (this.singleMode === 'maybe') return { data: matched[0] ?? null, error: null }
+      if (this.singleMode === 'one') return matched[0] ? { data: matched[0], error: null } : { data: null, error: { message: 'JSON object requested, multiple (or no) rows returned' } as unknown as null }
       return { data: matched, error: null, ...(this.wantCount ? { count: matched.length } : {}) }
     }).then(onfulfilled, onrejected)
   }

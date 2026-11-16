@@ -8,6 +8,7 @@ import { TASK_STATUSES, type TaskStatus } from '../types.ts'
 interface UpdateTaskStatusArgs {
   task?: string
   status?: string
+  comment?: string
   agent_name?: string
   confirmed_cross_agent?: boolean
 }
@@ -22,6 +23,30 @@ export async function updateTaskStatus(admin: SupabaseClient, args: UpdateTaskSt
 
   const task = await resolveTaskByKeyOrId(admin, ref)
   await checkCrossAgentConflict(admin, { type: 'task', id: task.id, label: task.key }, agentName, Boolean(args.confirmed_cross_agent))
+
+  // Back to To do from in progress always says why (stage 4a): the reason is
+  // posted as a comment, and the work stays marked as started.
+  if (args.status === 'todo' && task.status === 'in_progress') {
+    const comment = args.comment?.trim() ?? ''
+    if (comment.length < 15) {
+      throw new ToolError(`Moving ${task.key} back to To do needs "comment": why, in at least 15 characters. It is posted on the task.`)
+    }
+    const actorId = await resolveMcpAgentProfileId(admin)
+    const { error } = await admin.rpc('return_to_todo', { p_task: task.id, p_comment: comment, p_actor: actorId })
+    if (error) throw new ToolError(`Failed to move ${task.key} back to To do: ${error.message}`)
+    const { error: auditError } = await admin.from('agent_audit_log').insert({
+      agent_type: 'mcp',
+      agent_name: agentName,
+      agent_profile_id: actorId,
+      project_id: task.project_id,
+      task_id: task.id,
+      action_type: 'update_task_status',
+      payload: args,
+      result: { key: task.key, status: 'todo' },
+    })
+    if (auditError) console.error('[mcp-server] Failed to record agent_audit_log', auditError.message)
+    return { key: task.key, status: 'todo' }
+  }
 
   const { data, error } = await admin
     .from('tasks')
@@ -68,5 +93,11 @@ export async function updateTaskStatus(admin: SupabaseClient, args: UpdateTaskSt
   })
   if (auditError) console.error('[mcp-server] Failed to record agent_audit_log', auditError.message)
 
-  return { key: data.key, status: data.status }
+  return {
+    key: data.key,
+    status: data.status,
+    // An agent moving a task to in progress does not start the work: only the
+    // assignee does, with "Take into work" in the app.
+    ...(args.status === 'in_progress' ? { note: 'Status only — the work counts as started when the assignee takes it into work in Qira.' } : {}),
+  }
 }

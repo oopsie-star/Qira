@@ -50,7 +50,7 @@ export async function getTask(admin: SupabaseClient, args: GetTaskArgs) {
   const [commentsRes, activitiesRes, fieldChangesRes, attachmentNotesRes, lastAgentRes, linksRes] = await Promise.all([
     admin
       .from('task_comments')
-      .select('id, author_id, body, created_at, edited_at, archived_at, archived_by, archived_by_agent, folded_into_description, archive_reason')
+      .select('id, author_id, body, created_at, edited_at, archived_at, archived_by, archived_by_agent, folded_into_description, archive_reason, comment_type')
       .eq('task_id', task.id)
       .order('created_at'),
     admin
@@ -132,6 +132,7 @@ export async function getTask(admin: SupabaseClient, args: GetTaskArgs) {
   if (task.assignee_id) profileIds.add(task.assignee_id)
   for (const id of task.assignee_ids ?? []) profileIds.add(id)
   if (task.reporter_id) profileIds.add(task.reporter_id)
+  if (task.work_started_by) profileIds.add(task.work_started_by)
   if (args.include_archived === true) {
     for (const path of archivedPaths) {
       const by = noteByPath.get(path)?.archived_by
@@ -181,11 +182,23 @@ export async function getTask(admin: SupabaseClient, args: GetTaskArgs) {
     epic_id: task.epic_id,
     sprint_id: task.sprint_id,
     due_date: task.due_date,
+    // Stage 4a: whether the ASSIGNEE has started (an agent's in_progress does
+    // not count), and so whether the text can still be edited in place.
+    work_started: task.work_started_at
+      ? {
+          at: task.work_started_at,
+          by_email: task.work_started_by ? emailById.get(task.work_started_by) ?? task.work_started_by : null,
+          signal: task.work_started_signal,
+          comment: [...comments].reverse().find((c) => c.comment_type === 'take_in_work')?.body ?? null,
+          note: 'Title and description can no longer be edited in place by an agent — see get_edit_policy.',
+        }
+      : null,
     comments: comments.map((c) => ({
       id: c.id,
       author_email: emailById.get(c.author_id) ?? c.author_id,
       body: c.body,
       created_at: c.created_at,
+      ...(c.comment_type && c.comment_type !== 'comment' ? { type: c.comment_type } : {}),
       ...(c.edited_at ? { edited_at: c.edited_at } : {}),
     })),
     archived_comments_count: archivedComments.length,
