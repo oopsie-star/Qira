@@ -14,7 +14,13 @@ const AGENT_NAMES: AgentName[] = ['claude', 'chatgpt']
 // Identity is self-declared: every write tool requires this argument, and
 // its schema description is the "instruction to the model" that makes the
 // self-declaration happen.
-export function resolveAgentName(args: Record<string, unknown>): AgentName {
+//
+// Takes only the one field it reads. It used to ask for Record<string, unknown>,
+// which no handler's typed args interface satisfies (an interface has no index
+// signature) — so every write tool was a type error, and `deno check` was too
+// noisy to catch a real one. Any object carrying agent_name fits now; behaviour
+// is unchanged.
+export function resolveAgentName(args: { agent_name?: unknown }): AgentName {
   const value = typeof args.agent_name === 'string' ? args.agent_name : ''
   if (!AGENT_NAMES.includes(value as AgentName)) {
     throw new ToolError(`"agent_name" is required and must be one of: ${AGENT_NAMES.join(', ')}`)
