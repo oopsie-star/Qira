@@ -20,6 +20,7 @@ import { postProjectMapQa } from './postProjectMapQa.ts'
 import { readAttachment } from './readAttachment.ts'
 import { renameAttachment } from './renameAttachment.ts'
 import { searchTasks } from './searchTasks.ts'
+import { unlinkSupersedes } from './unlinkSupersedes.ts'
 import { updateTask } from './updateTask.ts'
 import { updateTaskStatus } from './updateTaskStatus.ts'
 import { upsertProjectMapBlock } from './upsertProjectMapBlock.ts'
@@ -48,6 +49,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   create_project: createProject,
   read_attachment: readAttachment,
   mark_task_superseded: markTaskSuperseded,
+  unlink_supersedes: unlinkSupersedes,
   get_project_map: getProjectMap,
   upsert_project_map_block: upsertProjectMapBlock,
   delete_project_map_block: deleteProjectMapBlock,

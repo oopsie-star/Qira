@@ -44,11 +44,13 @@ Deno.test('handleRequest: initialize returns protocol/server info and instructio
   assertEquals(typeof body.result.instructions, 'string')
 })
 
-Deno.test('handleRequest: tools/list returns all 18 tool schemas without touching the DB', async () => {
+// The count was hard-coded at 18 and never moved as tools were added, so this
+// test had been failing for a while. It now asserts the exact name list, which
+// is what actually matters — a new tool must be added here on purpose.
+Deno.test('handleRequest: tools/list returns every tool schema without touching the DB', async () => {
   // deno-lint-ignore no-explicit-any
   const result = await handleRequest(undefined as any, { jsonrpc: '2.0', id: 2, method: 'tools/list' })
   const body = result.body as { result: { tools: { name: string }[] } }
-  assertEquals(body.result.tools.length, 18)
   assertEquals(
     body.result.tools.map((t) => t.name).sort(),
     [
@@ -60,16 +62,22 @@ Deno.test('handleRequest: tools/list returns all 18 tool schemas without touchin
       'create_project',
       'create_sprint',
       'create_task',
+      'delete_project_map_block',
       'get_project',
+      'get_project_map',
       'get_task',
+      'list_design_screens',
       'list_projects',
       'list_tasks',
       'mark_task_superseded',
+      'post_project_map_qa',
       'read_attachment',
       'rename_attachment',
       'search_tasks',
+      'unlink_supersedes',
       'update_task',
       'update_task_status',
+      'upsert_project_map_block',
     ],
   )
 })
@@ -173,7 +181,10 @@ Deno.test('handleOAuthRoute: /register hit with the wrong method returns 405, ne
 
 Deno.test('safeFilename replaces characters Supabase Storage rejects in object keys', () => {
   assertEquals(safeFilename('spec (final).pdf'), 'spec (final).pdf')
-  assertEquals(safeFilename('тест.pdf'), '____.pdf')
+  // A run of rejected characters collapses into ONE underscore — that is what
+  // production has always done (the regex carries a +). The human-readable
+  // name is kept separately in attachment_notes.original_name.
+  assertEquals(safeFilename('тест.pdf'), '_.pdf')
   assertEquals(safeFilename('a/b\\c'), 'a_b_c')
 })
 

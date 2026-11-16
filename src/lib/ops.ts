@@ -1,4 +1,4 @@
-import type { Locale, Task, TaskLink } from '@/types'
+import { isArchivedStatus, type Locale, type Task, type TaskLink } from '@/types'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -106,9 +106,18 @@ export function isTaskBlocked(taskId: string, taskLinks: TaskLink[], tasks: Pick
   return getActiveBlockers(taskId, taskLinks, tasks).length > 0
 }
 
-/** The 'supersedes' link (if any) where `taskId` is the obsolete target being replaced. */
+/**
+ * The 'supersedes' link (if any) where `taskId` is the obsolete target being
+ * replaced — by a LIVE task. A replacement that was itself archived replaces
+ * nothing: the link stays on record, but it must not badge this task obsolete
+ * or sink it to the bottom of the backlog, which is exactly what it used to do.
+ */
 export function getSupersededByLink(taskId: string, taskLinks: TaskLink[]) {
-  return taskLinks.find((link) => link.link_type === 'supersedes' && link.target_task_id === taskId) ?? null
+  return taskLinks.find((link) => (
+    link.link_type === 'supersedes'
+    && link.target_task_id === taskId
+    && !isArchivedStatus(link.source_task?.status)
+  )) ?? null
 }
 
 export function isSuperseded(taskId: string, taskLinks: TaskLink[]) {

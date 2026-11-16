@@ -26,7 +26,7 @@ import { PrototypeModal } from './PrototypeModal'
 import { placeholderAsPerson, resolveAssigneeFields, taskAssigneeDisplay, taskReporterDisplay } from '@/lib/people'
 import { useCurrentProjectKey } from '@/lib/projectRoutes'
 import { useStore } from '@/store'
-import { isUniversalTask, type IssuePriority, type IssueType, type Profile, type Task, type TaskLinkType, type TaskStatus } from '@/types'
+import { isArchivedStatus, isUniversalTask, type IssuePriority, type IssueType, type Profile, type Task, type TaskLinkType, type TaskStatus } from '@/types'
 
 const agentBadgeClasses: Record<string, string> = {
   claude: 'bg-indigo-100 text-indigo-700',
@@ -1061,9 +1061,14 @@ export function TaskDrawer() {
                            ? tasks.find((item) => item.id === link.source_task_id) ?? link.source_task
                            : tasks.find((item) => item.id === link.target_task_id) ?? link.target_task
                          const canDeleteLink = canDeleteAuthoredContent(activeProjectRole, isSuperAdmin, profile?.id, link.created_by, currentTask.status)
+                         // A link to an archived task is kept as a record, but it
+                         // no longer says anything about this one — shown muted
+                         // and labelled, so it reads as history rather than as a
+                         // live "replaced by".
+                         const isHistory = isArchivedStatus(linkedTask?.status)
 
                          return (
-                           <div key={link.id} className="rounded-2xl border border-slate-200 bg-surface-card px-4 py-3">
+                           <div key={link.id} className={`rounded-2xl border border-slate-200 bg-surface-card px-4 py-3 ${isHistory ? 'opacity-60' : ''}`}>
                              <div className="flex items-start justify-between gap-3">
                                <button
                                  type="button"
@@ -1073,7 +1078,9 @@ export function TaskDrawer() {
                                  <p className="truncate text-sm font-semibold text-slate-900">
                                    {linkedTask?.key ?? '—'} - {linkedTask?.title ?? '—'}
                                  </p>
-                                 <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-400">{getLinkText(link.link_type, isIncoming)}</p>
+                                 <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-400">
+                                   {getLinkText(link.link_type, isIncoming)}{isHistory ? ` · ${t('task.link.history')}` : ''}
+                                 </p>
                                </button>
                                {canDeleteLink && (
                                  <button

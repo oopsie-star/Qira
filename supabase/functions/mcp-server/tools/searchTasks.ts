@@ -2,10 +2,12 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.8
 
 import { ToolError } from './errors.ts'
 import { resolveProjectByKey } from './resolvers.ts'
+import { HIDDEN_STATUS_FILTER, isHiddenTaskStatus } from './visibility.ts'
 
 interface SearchTasksArgs {
   query?: string
   project?: string
+  include_archived?: boolean
 }
 
 const RESULT_LIMIT = 25
@@ -22,6 +24,7 @@ export async function searchTasks(admin: SupabaseClient, args: SearchTasksArgs) 
 
   const projectId = args.project ? (await resolveProjectByKey(admin, args.project)).id : null
   const pattern = `%${escapeLikePattern(query)}%`
+  const includeArchived = args.include_archived === true
 
   // Two separate ILIKE queries (rather than a single .or(...)) avoid having
   // to interpolate user input into PostgREST's comma/paren filter syntax.
@@ -33,6 +36,10 @@ export async function searchTasks(admin: SupabaseClient, args: SearchTasksArgs) 
       .order('updated_at', { ascending: false })
       .limit(RESULT_LIMIT)
     if (projectId) q = q.eq('project_id', projectId)
+    // Filtered in the query, not afterwards: RESULT_LIMIT applies to what the
+    // database returns, so dropping archived rows after the fact would let a
+    // page of dead duplicates crowd the live task out of the results entirely.
+    if (!includeArchived) q = q.not('status', 'in', HIDDEN_STATUS_FILTER)
     return q
   }
 
@@ -48,7 +55,15 @@ export async function searchTasks(admin: SupabaseClient, args: SearchTasksArgs) 
   const tasks = [...byKey.values()]
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
     .slice(0, RESULT_LIMIT)
-    .map(({ key, title, status, priority }) => ({ key, title, status, priority }))
+    .map(({ key, title, status, priority }) => ({
+      key,
+      title,
+      status,
+      priority,
+      // Only ever true with include_archived — and then said explicitly, so a
+      // caller can never mistake a dead row for the live one.
+      ...(isHiddenTaskStatus(status) ? { archived: true } : {}),
+    }))
 
   return { tasks }
 }

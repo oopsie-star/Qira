@@ -468,6 +468,16 @@ export const ALL_TASK_STATUSES: TaskStatus[] = [...STATUS_COLUMNS, ...TERMINAL_S
 export function isTerminalStatus(status: TaskStatus): boolean {
   return TERMINAL_STATUSES.includes(status)
 }
+
+// Narrower than TERMINAL_STATUSES: the statuses that take a task out of the
+// working area altogether — out of search, lists and the assistant, and out of
+// any say in whether another task is obsolete. cancelled is a decision about
+// the work and stays findable. Mirrors HIDDEN_TASK_STATUSES in the MCP server
+// (supabase/functions/mcp-server/tools/visibility.ts); keep the two in step.
+export const ARCHIVED_STATUSES: TaskStatus[] = ['archived', 'deleted']
+export function isArchivedStatus(status: TaskStatus | null | undefined): boolean {
+  return Boolean(status) && ARCHIVED_STATUSES.includes(status as TaskStatus)
+}
 export const MAX_ASSIGNEES = 3
 /** A "universal" task has 2+ assignees (status is admin-only, highlighted in backlog). */
 export function isUniversalTask(task: { assignee_ids?: string[] | null }): boolean {

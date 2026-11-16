@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import type { LLMToolDefinition } from '@/lib/ai'
-import type { Epic, IssuePriority, Profile, Sprint, Task } from '@/types'
+import { isArchivedStatus, type Epic, type IssuePriority, type Profile, type Sprint, type Task } from '@/types'
 
 export interface AgentToolsContext {
   members: Profile[]
@@ -303,6 +303,10 @@ export async function executeTool(name: string, argsJson: string, ctx: AgentTool
     const sprintId = typeof args.sprint_id === 'string' ? args.sprint_id : undefined
 
     const matches = ctx.tasks.filter((task) => {
+      // Same rule as the MCP server: archived and deleted tasks are out of the
+      // working area. The backlog loads them into the store, so without this
+      // the assistant would happily answer from a dead duplicate.
+      if (isArchivedStatus(task.status)) return false
       if (sprintId) return task.sprint_id === sprintId
       if (epicId) return task.epic_id === epicId
       return true

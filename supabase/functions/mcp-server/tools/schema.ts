@@ -48,13 +48,17 @@ const CROSS_AGENT_NOTE =
 export const TOOL_SCHEMAS: McpToolSchema[] = [
   {
     name: 'list_tasks',
-    description: 'List tasks in a project, optionally filtered by status and/or assignee.',
+    description: 'List tasks in a project, optionally filtered by status and/or assignee. Archived and deleted tasks are left out unless you pass include_archived: true or ask for one of those statuses by name.',
     inputSchema: {
       type: 'object',
       properties: {
         project: { type: 'string', description: 'Project key, e.g. "PROJ".' },
         status: { type: 'string', enum: TASK_STATUSES },
         assignee_email: { type: 'string', description: 'Filter to tasks assigned (solely or jointly) to this person.' },
+        include_archived: {
+          type: 'boolean',
+          description: 'Also return archived and deleted tasks, each marked archived: true. Omit for the working area only.',
+        },
       },
       required: ['project'],
     },
@@ -62,11 +66,15 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
   {
     name: 'get_task',
     description:
-      'Get full details of a task: description, status, comments, attachments, change history, and last_ai_agent (which AI — claude/chatgpt/qira-assistant — last modified it, and when).',
+      'Get full details of a task: description, status, comments, attachments, change history, and last_ai_agent (which AI — claude/chatgpt/qira-assistant — last modified it, and when). superseded_by / supersedes list only live tasks; links to archived tasks are in supersede_history and do not make this task obsolete.',
     inputSchema: {
       type: 'object',
       properties: {
         task: { type: 'string', description: 'Task key (e.g. "PROJ-42") or id (uuid).' },
+        include_archived: {
+          type: 'boolean',
+          description: 'For an archived or deleted task, return its full contents. Without it such a task answers with a short summary and counts only.',
+        },
       },
       required: ['task'],
     },
@@ -298,13 +306,31 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
     },
   },
   {
+    name: 'unlink_supersedes',
+    description:
+      'Remove the supersedes link between two tasks — the undo for mark_task_superseded. Give the two tasks in either order. Use it when a task was marked obsolete by mistake, or still points at a replacement that has since been archived.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: 'One of the two linked tasks (key or id).' },
+        other: { type: 'string', description: 'The other linked task (key or id).' },
+        agent_name: AGENT_NAME_PROPERTY,
+      },
+      required: ['task', 'other', 'agent_name'],
+    },
+  },
+  {
     name: 'search_tasks',
-    description: 'Search tasks by a substring match on title and description.',
+    description: 'Search tasks by a substring match on title and description. Archived and deleted tasks are left out unless you pass include_archived: true.',
     inputSchema: {
       type: 'object',
       properties: {
         query: { type: 'string' },
         project: { type: 'string', description: 'Optional — restrict to one project by key.' },
+        include_archived: {
+          type: 'boolean',
+          description: 'Also return archived and deleted tasks, each marked archived: true. Omit for the working area only.',
+        },
       },
       required: ['query'],
     },

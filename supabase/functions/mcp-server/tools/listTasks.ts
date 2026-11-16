@@ -3,11 +3,13 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.8
 import { ToolError } from './errors.ts'
 import { resolveProfileByEmail, resolveProjectByKey } from './resolvers.ts'
 import { TASK_STATUSES, type TaskStatus } from '../types.ts'
+import { HIDDEN_STATUS_FILTER, isHiddenTaskStatus } from './visibility.ts'
 
 interface ListTasksArgs {
   project?: string
   status?: string
   assignee_email?: string
+  include_archived?: boolean
 }
 
 export async function listTasks(admin: SupabaseClient, args: ListTasksArgs) {
@@ -27,6 +29,9 @@ export async function listTasks(admin: SupabaseClient, args: ListTasksArgs) {
     .order('created_at', { ascending: false })
 
   if (args.status) query = query.eq('status', args.status)
+  // Asking for status "archived" or "deleted" by name IS asking for archived
+  // tasks, so that counts as the explicit request too.
+  else if (args.include_archived !== true) query = query.not('status', 'in', HIDDEN_STATUS_FILTER)
 
   if (args.assignee_email) {
     const profile = await resolveProfileByEmail(admin, args.assignee_email)
@@ -47,6 +52,7 @@ export async function listTasks(admin: SupabaseClient, args: ListTasksArgs) {
       assignee_ids: assigneeIds,
       due_date: task.due_date,
       updated_at: task.updated_at,
+      ...(isHiddenTaskStatus(task.status) ? { archived: true } : {}),
     }
   })
 

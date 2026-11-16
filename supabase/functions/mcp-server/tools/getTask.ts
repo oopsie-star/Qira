@@ -3,9 +3,11 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.8
 import { displayFilename } from './attachmentPaths.ts'
 import { ToolError } from './errors.ts'
 import { resolveTaskByKeyOrId } from './resolvers.ts'
+import { classifySupersedeLinks, isHiddenTaskStatus, type SupersedeLinkRow } from './visibility.ts'
 
 interface GetTaskArgs {
   task?: string
+  include_archived?: boolean
 }
 
 interface HistoryEntry {
@@ -19,6 +21,28 @@ export async function getTask(admin: SupabaseClient, args: GetTaskArgs) {
   if (!ref) throw new ToolError('"task" is required.')
 
   const task = await resolveTaskByKeyOrId(admin, ref)
+
+  // An archived task takes its comments and attachments out of the working area
+  // with it. Asked for without include_archived it answers with what it is and
+  // how much is behind it — enough to know it exists and why it is not live,
+  // without dumping a dead task's whole contents into the caller's context.
+  if (isHiddenTaskStatus(task.status) && args.include_archived !== true) {
+    const { count, error } = await admin
+      .from('task_comments')
+      .select('id', { count: 'exact', head: true })
+      .eq('task_id', task.id)
+    if (error) throw new ToolError(`Failed to count comments: ${error.message}`)
+    return {
+      key: task.key,
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      archived: true,
+      archived_comments_count: count ?? 0,
+      archived_attachments_count: task.attachments.length,
+      note: 'This task is archived. Pass include_archived: true to see its description, comments and attachments.',
+    }
+  }
 
   const [commentsRes, activitiesRes, fieldChangesRes, attachmentNotesRes, lastAgentRes, linksRes] = await Promise.all([
     admin
@@ -53,7 +77,7 @@ export async function getTask(admin: SupabaseClient, args: GetTaskArgs) {
       .maybeSingle(),
     admin
       .from('task_links')
-      .select('source_task_id, target_task_id, source_task:tasks!task_links_source_task_id_fkey(key, title), target_task:tasks!task_links_target_task_id_fkey(key, title)')
+      .select('source_task_id, target_task_id, source_task:tasks!task_links_source_task_id_fkey(key, title, status), target_task:tasks!task_links_target_task_id_fkey(key, title, status)')
       .eq('link_type', 'supersedes')
       .or(`source_task_id.eq.${task.id},target_task_id.eq.${task.id}`),
   ])
@@ -65,12 +89,10 @@ export async function getTask(admin: SupabaseClient, args: GetTaskArgs) {
   if (lastAgentRes.error) throw new ToolError(`Failed to load last agent: ${lastAgentRes.error.message}`)
   if (linksRes.error) throw new ToolError(`Failed to load supersede links: ${linksRes.error.message}`)
 
-  const supersededByLink = (linksRes.data ?? []).find((l) => l.target_task_id === task.id)
-  const supersedesLinks = (linksRes.data ?? []).filter((l) => l.source_task_id === task.id)
-  const supersededBy = supersededByLink
-    ? (supersededByLink.source_task as unknown as { key: string; title: string })
-    : null
-  const supersedes = supersedesLinks.map((l) => l.target_task as unknown as { key: string; title: string })
+  const { supersededBy, supersedes, history: supersedeHistory } = classifySupersedeLinks(
+    task.id,
+    (linksRes.data ?? []) as unknown as SupersedeLinkRow[],
+  )
 
   const comments = commentsRes.data ?? []
   const activities = activitiesRes.data ?? []
@@ -140,8 +162,12 @@ export async function getTask(admin: SupabaseClient, args: GetTaskArgs) {
     last_ai_agent: lastAgentRes.data
       ? { agent_name: lastAgentRes.data.agent_name, action_type: lastAgentRes.data.action_type, at: lastAgentRes.data.created_at }
       : null,
+    ...(isHiddenTaskStatus(task.status) ? { archived: true } : {}),
     superseded_by: supersededBy,
     supersedes,
+    // Links whose other end is archived: kept as a record, but they no longer
+    // say anything about whether THIS task is current.
+    supersede_history: supersedeHistory,
     history,
   }
 }
