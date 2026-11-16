@@ -37,6 +37,15 @@ curl -s "$SUPA_URL/rest/v1/<table>?select=<new_column>&limit=1" \
 ```
 An empty `[]` means the column exists but RLS hid the rows (expected for anon) — that's success. A `column ... does not exist` error means the migration didn't land.
 
+**After EVERY migration — smoke-check the main screens on prod (mandatory, and say so in the report):**
+
+```bash
+npm run smoke:prod
+```
+It sends the exact queries of the task list, the board and the task drawer (comments, activity, history, links, attachments) — column lists come from `src/store/selects.ts`, the same module the app uses — plus the archive RPCs. Every line must say `ok`. It catches what a migration breaks for the whole app at once: a dropped/renamed column, a missing RPC, and an embed made ambiguous (PGRST201). The last one is how stage 3 hid every comment: adding a second foreign key from a table to `profiles` breaks every unnamed `profiles(*)` embed from that table. So: name the FK in embeds (`profiles!<table>_<col>_fkey(*)`), and prefer no FK at all for "who did it" stamp columns (`archived_by` etc.) filled by a security-definer function. When a screen query changes, update `selects.ts`/`scripts/prodSmoke.ts` with it.
+
+PostgREST reloads its schema cache a few seconds after DDL; a check run in the same second as `db push` may still see the old schema — rerun once before concluding.
+
 **If `git status` shows untracked `supabase/migrations/*.sql` files:** don't assume they're pending/unapplied. Check first:
 
 ```bash

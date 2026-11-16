@@ -42,6 +42,20 @@ import type {
   TaskStatus,
   WebhookEvent,
 } from '@/types'
+import {
+  TASK_SELECT,
+  ACTIVITY_EVENT_SELECT,
+  AGENT_AUDIT_LOG_SELECT,
+  PROJECT_ACCESS_SELECT,
+  PROJECT_MEMBER_SELECT,
+  TASK_COMMENT_SELECT,
+  TASK_ACTIVITY_SELECT,
+  TASK_LINK_SELECT,
+  NOTIFICATION_SELECT,
+  DELETION_REQUEST_SELECT,
+  PROJECT_DELETION_REQUEST_SELECT,
+  TASK_FIELD_CHANGE_SELECT,
+} from './selects'
 
 export interface WeeklyDigestEntry {
   projectId: string
@@ -49,25 +63,6 @@ export interface WeeklyDigestEntry {
   projectName: string
   stats: WeeklyDigestStats
 }
-
-const TASK_SELECT = `
-  *,
-  epic:epics(*),
-  assignee:profiles!tasks_assignee_id_fkey(*),
-  reporter:profiles!tasks_reporter_id_fkey(*)
-`
-
-const ACTIVITY_EVENT_SELECT = `
-  id, project_id, profile_id, event_type, task_id, detail, created_at,
-  profile:profiles(id, full_name, email),
-  task:tasks(id, key, title)
-`
-
-const AGENT_AUDIT_LOG_SELECT = `
-  id, agent_type, agent_profile_id, project_id, task_id, action_type, payload, result, created_at,
-  agent:profiles!agent_audit_log_agent_profile_id_fkey(id, full_name, email),
-  task:tasks(id, key, title)
-`
 
 // PostgREST caps a plain select at its configured max-rows (1000 by default),
 // silently hiding rows past that. We page through with a range so there is no
@@ -89,66 +84,6 @@ async function fetchAllTasks(
   }
   return all
 }
-
-// `department` / `additional_departments` live on the membership (they used to
-// be global, on `profiles`) — leave them out of these column lists and every
-// edit writes to the DB fine but reads back as blank on the next fetch.
-const PROJECT_ACCESS_SELECT = `
-  id,
-  project_id,
-  profile_id,
-  project_role,
-  department,
-  additional_departments,
-  created_at,
-  project:projects(*)
-`
-
-const PROJECT_MEMBER_SELECT = `
-  id,
-  project_id,
-  profile_id,
-  project_role,
-  department,
-  additional_departments,
-  created_at,
-  profile:profiles(*)
-`
-
-// The FK is named: task_comments has more than one column pointing at
-// profiles over time, and an unnamed embed fails outright (PGRST201) when so.
-const TASK_COMMENT_SELECT = `
-  *,
-  author:profiles!task_comments_author_id_fkey(*)
-`
-
-const TASK_ACTIVITY_SELECT = `
-  *,
-  actor:profiles(*)
-`
-
-const TASK_LINK_SELECT = `
-  *,
-  source_task:tasks!task_links_source_task_id_fkey(id, key, title, status, assignee_id),
-  target_task:tasks!task_links_target_task_id_fkey(id, key, title, status, assignee_id)
-`
-
-const NOTIFICATION_SELECT = `
-  *,
-  task:tasks(id, key, title, status, assignee_id)
-`
-
-const DELETION_REQUEST_SELECT = `
-  *,
-  requester:profiles(*),
-  project:projects(id, key, name)
-`
-
-const PROJECT_DELETION_REQUEST_SELECT = `
-  *,
-  requester:profiles(*),
-  approvals:project_deletion_approvals(admin_id, approved_at)
-`
 
 const ACTIVE_PROJECT_STORAGE_KEY = 'qira-active-project-id'
 
@@ -1814,7 +1749,7 @@ export const useStore = create<AppState>((set, get) => {
         .order('created_at', { ascending: false }),
       supabase
         .from('task_field_changes')
-        .select(`*, profile:profiles(id, full_name, email)`)
+        .select(TASK_FIELD_CHANGE_SELECT)
         .eq('task_id', taskId)
         .order('changed_at', { ascending: false }),
     ])
