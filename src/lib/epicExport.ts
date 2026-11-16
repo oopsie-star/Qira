@@ -194,7 +194,7 @@ export async function exportEpicToZip(epic: Epic, ctx: EpicExportCtx): Promise<v
 
   const comments: TaskComment[] = []
   for (const ids of chunk(tasks.map((t) => t.id), IN_CHUNK)) {
-    const { data } = await supabase.from('task_comments').select(COMMENT_SELECT).in('task_id', ids).order('created_at')
+    const { data } = await supabase.from('task_comments').select(COMMENT_SELECT).in('task_id', ids).is('archived_at', null).order('created_at')
     comments.push(...((data ?? []) as TaskComment[]))
   }
 

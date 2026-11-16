@@ -64,7 +64,22 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null; count?: num
     if (opts?.head) this.headOnly = true
     return this
   }
-  eq(col: string, val: unknown) { this.predicates.push((r) => r[col] === val); return this }
+  eq(col: string, val: unknown) {
+    // PostgREST's `json_col->>key` text extraction, as in .eq('result->>id', x).
+    const json = col.match(/^(\w+)->>(\w+)$/)
+    if (json) {
+      this.predicates.push((r) => {
+        const obj = r[json[1]] as Record<string, unknown> | null | undefined
+        return obj != null && String(obj[json[2]]) === String(val)
+      })
+    } else this.predicates.push((r) => r[col] === val)
+    return this
+  }
+  is(col: string, val: null) {
+    if (val !== null) throw new Error('fakeAdmin: .is() supports only null')
+    this.predicates.push((r) => r[col] === null || r[col] === undefined)
+    return this
+  }
   in(col: string, values: unknown[]) { this.predicates.push((r) => values.includes(r[col])); return this }
   ilike(col: string, pattern: string) {
     const re = likeToRegExp(pattern)
@@ -221,4 +236,42 @@ export const fakeSetAttachmentArchived: RpcHandler = (params, db) => {
     return { data: { ...outcome, changed: true }, error: null }
   }
   return { data: null, error: { message: `attachment ${path} is not attached to any task, epic or sprint` } }
+}
+
+/**
+ * set_comment_archived as the SQL function behaves (20261116020000): stamps or
+ * clears the archive columns and reports changed: false on a repeat.
+ */
+export const fakeSetCommentArchived: RpcHandler = (params, db) => {
+  const row = (db.tables.task_comments ?? []).find((c) => c.id === params.p_comment)
+  if (!row) return { data: null, error: { message: `comment ${params.p_comment} does not exist` } }
+  const archived = params.p_archived as boolean
+  const folded = archived && params.p_folded === true
+  const isArchived = row.archived_at != null
+  const base = { comment_id: row.id, task_id: row.task_id, archived }
+  if (archived === isArchived && (!archived || (row.folded_into_description === true) === folded)) {
+    return { data: { ...base, folded_into_description: row.folded_into_description === true, changed: false }, error: null }
+  }
+  if (archived) {
+    if (!isArchived) Object.assign(row, { archived_at: '2026-11-16T12:00:00Z', archived_by: params.p_actor, archived_by_agent: params.p_agent })
+    row.folded_into_description = folded
+  } else {
+    Object.assign(row, { archived_at: null, archived_by: null, archived_by_agent: null, folded_into_description: false })
+  }
+  return { data: { ...base, folded_into_description: folded, changed: true }, error: null }
+}
+
+/** update_comment_body: live comments only, edit recorded, changed: false when identical. */
+export const fakeUpdateCommentBody: RpcHandler = (params, db) => {
+  const row = (db.tables.task_comments ?? []).find((c) => c.id === params.p_comment)
+  if (!row) return { data: null, error: { message: `comment ${params.p_comment} does not exist` } }
+  if (row.archived_at != null) return { data: null, error: { message: `comment ${row.id} is archived; restore it before editing` } }
+  const body = String(params.p_body ?? '').trim()
+  const base = { comment_id: row.id, task_id: row.task_id }
+  if (body === row.body) return { data: { ...base, changed: false }, error: null }
+  ;(db.tables.task_comment_edits ??= []).push({
+    comment_id: row.id, old_body: row.body, new_body: body, edited_by: params.p_actor, edited_by_agent: params.p_agent,
+  })
+  Object.assign(row, { body, edited_at: '2026-11-16T12:00:00Z' })
+  return { data: { ...base, changed: true }, error: null }
 }

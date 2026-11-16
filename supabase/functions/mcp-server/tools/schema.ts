@@ -83,14 +83,14 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
   {
     name: 'get_task',
     description:
-      'Get full details of a task: description, status, comments, attachments, change history, and last_ai_agent (which AI — claude/chatgpt/qira-assistant — last modified it, and when). superseded_by / supersedes list only live tasks; links to archived tasks are in supersede_history and do not make this task obsolete.',
+      'Get full details of a task: description, status, live comments (each with its id), live attachments, change history, and last_ai_agent (which AI — claude/chatgpt/qira-assistant — last modified it, and when). Archived comments and files are counted (archived_comments_count, archived_attachments_count) and listed only with include_archived. superseded_by / supersedes list only live tasks; links to archived tasks are in supersede_history and do not make this task obsolete.',
     inputSchema: {
       type: 'object',
       properties: {
         task: { type: 'string', description: 'Task key (e.g. "PROJ-42") or id (uuid).' },
         include_archived: {
           type: 'boolean',
-          description: 'For an archived or deleted task, return its full contents. Without it such a task answers with a short summary and counts only.',
+          description: 'Also list archived comments and archived attachments (with when, by whom, and why). For an archived or deleted task, return its full contents — without it such a task answers with a short summary and counts only.',
         },
       },
       required: ['task'],
@@ -345,6 +345,53 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
         confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
       },
       required: ['task', 'body', 'agent_name'],
+    },
+  },
+  {
+    name: 'archive_comment',
+    description:
+      `Move a comment out of the task's working area into its archive — kept, and restorable with restore_comment. Use it for comments that are outdated, resolved, or whose content you have moved into the description (then pass folded_into_description: true). Nothing is deleted. Safe to repeat.${CROSS_AGENT_NOTE}`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        comment: { type: 'string', description: 'The comment id, from the comments list of get_task.' },
+        folded_into_description: {
+          type: 'boolean',
+          description: 'True when the content of the comment now lives in the task description (you updated the description with it).',
+        },
+        agent_name: AGENT_NAME_PROPERTY,
+        confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
+      },
+      required: ['comment', 'agent_name'],
+    },
+  },
+  {
+    name: 'restore_comment',
+    description:
+      `Bring an archived comment back into the task's working area. Archived comments, with their ids, are listed by get_task with include_archived: true. Safe to repeat.${CROSS_AGENT_NOTE}`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        comment: { type: 'string', description: 'The archived comment id.' },
+        agent_name: AGENT_NAME_PROPERTY,
+        confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
+      },
+      required: ['comment', 'agent_name'],
+    },
+  },
+  {
+    name: 'update_comment',
+    description:
+      `Rewrite a comment an AI agent wrote — to fix or complete it rather than adding another comment. People's comments cannot be edited this way. The previous text is kept in the comment's edit history.${CROSS_AGENT_NOTE}`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        comment: { type: 'string', description: 'The comment id, from the comments list of get_task.' },
+        body: { type: 'string', description: 'The full new text of the comment.' },
+        agent_name: AGENT_NAME_PROPERTY,
+        confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
+      },
+      required: ['comment', 'body', 'agent_name'],
     },
   },
   {

@@ -463,6 +463,8 @@ interface AppState {
   weeklyDigest: WeeklyDigestEntry | null
   notifications: Notification[]
   taskComments: TaskComment[]
+  /** The open task's archived comments (archive list in the drawer). */
+  archivedTaskComments: TaskComment[]
   taskActivities: TaskActivity[]
   taskFieldChanges: TaskFieldChange[]
   tasks: Task[]
@@ -548,7 +550,8 @@ interface AppState {
   createTaskLink: (sourceTaskId: string, targetTaskId: string, linkType: TaskLinkType) => Promise<TaskLink | null>
   createProjectWebhook: (fields: Pick<ProjectWebhook, 'name' | 'endpoint_url' | 'events' | 'secret' | 'webhook_type'>) => Promise<ProjectWebhook | null>
   testProjectWebhook: (webhook: ProjectWebhook) => Promise<{ ok: boolean; error?: string }>
-  deleteTaskComment: (commentId: string) => Promise<void>
+  /** Archive (not delete) a comment, or bring an archived one back. Through set_comment_archived. */
+  setTaskCommentArchived: (commentId: string, archived: boolean) => Promise<void>
   deleteTaskLink: (id: string) => Promise<void>
   updateTask: (id: string, fields: Partial<Task>) => Promise<void>
   deleteTask: (id: string) => Promise<void>
@@ -795,7 +798,7 @@ export const useStore = create<AppState>((set, get) => {
     agentAuditLog: [],
     weeklyDigest: null,
     notifications: [],
-    taskComments: [],
+    taskComments: [], archivedTaskComments: [],
     taskActivities: [],
     taskFieldChanges: [],
     tasks: [],
@@ -891,7 +894,7 @@ export const useStore = create<AppState>((set, get) => {
         projectMembers: [],
         projectInvites: [],
         assignableProfiles: [],
-        taskComments: [],
+        taskComments: [], archivedTaskComments: [],
         taskActivities: [],
         taskFieldChanges: [],
     })
@@ -1792,7 +1795,7 @@ export const useStore = create<AppState>((set, get) => {
   fetchTaskContext: async (taskId) => {
     const currentTask = get().tasks.find((task) => task.id === taskId)
     if (!currentTask) {
-      set({ taskComments: [], taskActivities: [], taskFieldChanges: [] })
+      set({ taskComments: [], archivedTaskComments: [], taskActivities: [], taskFieldChanges: [] })
       return
     }
 
@@ -1814,15 +1817,19 @@ export const useStore = create<AppState>((set, get) => {
         .order('changed_at', { ascending: false }),
     ])
 
+    // One query, split here: the drawer shows live comments, and the archive
+    // (incl. comments folded into the description) behind a toggle.
+    const allComments = (comments ?? []) as TaskComment[]
     set({
-      taskComments: (comments ?? []) as TaskComment[],
+      taskComments: allComments.filter((comment) => !comment.archived_at),
+      archivedTaskComments: allComments.filter((comment) => comment.archived_at),
       taskActivities: (activities ?? []) as TaskActivity[],
       taskFieldChanges: (fieldChanges ?? []) as unknown as TaskFieldChange[],
     })
   },
 
   clearTaskContext: () => {
-    set({ taskComments: [], taskActivities: [], taskFieldChanges: [] })
+    set({ taskComments: [], archivedTaskComments: [], taskActivities: [], taskFieldChanges: [] })
   },
 
   createProject: async (fields) => {
@@ -1905,7 +1912,7 @@ export const useStore = create<AppState>((set, get) => {
       members: [profile],
       projectMembers: [optimisticMembership],
       projectInvites: [],
-      taskComments: [],
+      taskComments: [], archivedTaskComments: [],
       taskActivities: [],
       taskFieldChanges: [],
     }))
@@ -2223,21 +2230,28 @@ export const useStore = create<AppState>((set, get) => {
     }
   },
 
-  deleteTaskComment: async (commentId) => {
-    const comment = get().taskComments.find((item) => item.id === commentId)
+  setTaskCommentArchived: async (commentId, archived) => {
+    const { taskComments, archivedTaskComments } = get()
+    const comment = (archived ? taskComments : archivedTaskComments).find((item) => item.id === commentId)
     if (!comment) return
 
-    set((state) => ({
-      taskComments: state.taskComments.filter((item) => item.id !== commentId),
-    }))
+    const byDate = (left: TaskComment, right: TaskComment) => left.created_at.localeCompare(right.created_at)
+    const moved: TaskComment = archived
+      ? { ...comment, archived_at: new Date().toISOString(), archived_by: get().profile?.id ?? null }
+      : { ...comment, archived_at: null, archived_by: null, archived_by_agent: null, folded_into_description: false }
+    set((state) => archived
+      ? {
+          taskComments: state.taskComments.filter((item) => item.id !== commentId),
+          archivedTaskComments: [...state.archivedTaskComments, moved].sort(byDate),
+        }
+      : {
+          archivedTaskComments: state.archivedTaskComments.filter((item) => item.id !== commentId),
+          taskComments: [...state.taskComments, moved].sort(byDate),
+        })
 
-    const { error } = await supabase
-      .from('task_comments')
-      .delete()
-      .eq('id', commentId)
-
+    const { error } = await supabase.rpc('set_comment_archived', { p_comment: commentId, p_archived: archived })
     if (error) {
-      set((state) => ({ taskComments: [...state.taskComments, comment].sort((left, right) => left.created_at.localeCompare(right.created_at)) }))
+      set({ taskComments, archivedTaskComments })
       throw error
     }
   },
@@ -2392,7 +2406,7 @@ export const useStore = create<AppState>((set, get) => {
     const previousTasks = get().tasks
     set((state) => ({ tasks: state.tasks.filter((task) => task.id !== id) }))
     if (get().openTaskId === id) {
-      set({ openTaskId: null, taskComments: [], taskActivities: [], taskFieldChanges: [] })
+      set({ openTaskId: null, taskComments: [], archivedTaskComments: [], taskActivities: [], taskFieldChanges: [] })
     }
     const { error } = await supabase.from('tasks').delete().eq('id', id)
     if (error) {
@@ -2926,7 +2940,7 @@ export const useStore = create<AppState>((set, get) => {
           selectedTaskIds: [],
           projectMembers: [],
           projectInvites: [],
-          taskComments: [],
+          taskComments: [], archivedTaskComments: [],
           taskActivities: [],
           taskFieldChanges: [],
         } : {}),
@@ -3266,7 +3280,7 @@ export const useStore = create<AppState>((set, get) => {
 
     if (request?.project_id === get().activeProjectId) {
       if (request.entity_type === 'task' && get().openTaskId === request.entity_id) {
-        set({ openTaskId: null, taskComments: [], taskActivities: [], taskFieldChanges: [] })
+        set({ openTaskId: null, taskComments: [], archivedTaskComments: [], taskActivities: [], taskFieldChanges: [] })
       }
 
       await Promise.all([

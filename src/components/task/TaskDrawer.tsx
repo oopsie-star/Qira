@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Calendar, ChevronLeft, ChevronRight, Link2, MessageSquare, Paperclip, Play, Plus, Send, ShieldAlert, Sparkles, Timer, Trash2, Wand2, X } from 'lucide-react'
+import { Archive, Calendar, ChevronDown, ChevronLeft, ChevronRight, Link2, MessageSquare, Paperclip, Play, Plus, Send, RotateCcw, ShieldAlert, Sparkles, Timer, Trash2, Wand2, X } from 'lucide-react'
 import { callLLM, getLLMConfig } from '@/lib/ai'
 import type { LLMMessage } from '@/lib/ai'
 import { supabase } from '@/lib/supabase'
@@ -26,6 +26,8 @@ import { PrototypeModal } from './PrototypeModal'
 import { placeholderAsPerson, resolveAssigneeFields, taskAssigneeDisplay, taskReporterDisplay } from '@/lib/people'
 import { useCurrentProjectKey } from '@/lib/projectRoutes'
 import { useStore } from '@/store'
+import { checkAppVersion, useAppIsStale } from '@/lib/appVersion'
+import { getErrorMessage } from '@/lib/errors'
 import { isArchivedStatus, isUniversalTask, type IssuePriority, type IssueType, type Profile, type Task, type TaskLinkType, type TaskStatus } from '@/types'
 
 const agentBadgeClasses: Record<string, string> = {
@@ -59,6 +61,7 @@ export function TaskDrawer() {
   const taskLinks = useStore((state) => state.taskLinks)
   const taskLastAiAgent = useStore((state) => state.taskLastAiAgent)
   const taskComments = useStore((state) => state.taskComments)
+  const archivedTaskComments = useStore((state) => state.archivedTaskComments)
   const taskActivities = useStore((state) => state.taskActivities)
   const taskFieldChanges = useStore((state) => state.taskFieldChanges)
   const updateTask = useStore((state) => state.updateTask)
@@ -68,7 +71,7 @@ export function TaskDrawer() {
   const createSubtask = useStore((state) => state.createSubtask)
   const createTaskComment = useStore((state) => state.createTaskComment)
   const createTaskLink = useStore((state) => state.createTaskLink)
-  const deleteTaskComment = useStore((state) => state.deleteTaskComment)
+  const setTaskCommentArchived = useStore((state) => state.setTaskCommentArchived)
   const deleteTaskLink = useStore((state) => state.deleteTaskLink)
   const fetchTaskContext = useStore((state) => state.fetchTaskContext)
   const clearTaskContext = useStore((state) => state.clearTaskContext)
@@ -145,6 +148,27 @@ export function TaskDrawer() {
   const [draftLabels, setDraftLabels] = useState('')
   const [subtaskTitle, setSubtaskTitle] = useState('')
   const [commentBody, setCommentBody] = useState('')
+  const [commentArchiveOpen, setCommentArchiveOpen] = useState(false)
+  const [commentArchiveBusy, setCommentArchiveBusy] = useState<string | null>(null)
+  const [commentArchiveError, setCommentArchiveError] = useState<string | null>(null)
+  // An outdated tab must not archive or restore: same rule as attachments.
+  const appIsStale = useAppIsStale()
+
+  async function changeCommentArchived(commentId: string, archived: boolean) {
+    setCommentArchiveError(null)
+    if (appIsStale || (await checkAppVersion())) {
+      setCommentArchiveError(t('comments.staleApp'))
+      return
+    }
+    setCommentArchiveBusy(commentId)
+    try {
+      await setTaskCommentArchived(commentId, archived)
+    } catch (err) {
+      setCommentArchiveError(getErrorMessage(err))
+    } finally {
+      setCommentArchiveBusy(null)
+    }
+  }
   const [commentFiles, setCommentFiles] = useState<File[]>([])
   const [commentUploading, setCommentUploading] = useState(false)
   const [deleteRequestSending, setDeleteRequestSending] = useState(false)
@@ -840,11 +864,13 @@ export function TaskDrawer() {
                         {canDeleteComment && (
                           <button
                             type="button"
-                            onClick={() => deleteTaskComment(comment.id)}
-                            className="rounded-xl p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
-                            title={t('common.delete')}
+                            onClick={() => void changeCommentArchived(comment.id, true)}
+                            disabled={appIsStale || commentArchiveBusy === comment.id}
+                            className="rounded-xl p-2 text-slate-400 transition hover:bg-surface-card hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                            title={appIsStale ? t('comments.staleApp') : t('comments.archive')}
+                            aria-label={t('comments.archive')}
                           >
-                            <Trash2 size={15} />
+                            <Archive size={15} />
                           </button>
                         )}
                       </div>
@@ -854,6 +880,61 @@ export function TaskDrawer() {
                   })
                 )}
               </div>
+
+              {commentArchiveError && (
+                <p className="mt-3 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-600">{commentArchiveError}</p>
+              )}
+
+              {archivedTaskComments.length > 0 && (
+                <div className="mt-4 rounded-xl bg-slate-50 px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={() => setCommentArchiveOpen((value) => !value)}
+                    aria-expanded={commentArchiveOpen}
+                    className="flex w-full items-center gap-2 text-left text-xs font-semibold text-slate-500 transition hover:text-slate-700"
+                  >
+                    {commentArchiveOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    <Archive size={13} />
+                    {t('comments.archived')} · {archivedTaskComments.length}
+                  </button>
+                  {commentArchiveOpen && (
+                    <div className="mt-2 space-y-2">
+                      {archivedTaskComments.map((comment) => {
+                        const canRestore = canDeleteAuthoredContent(
+                          activeProjectRole,
+                          isSuperAdmin,
+                          profile?.id,
+                          comment.author_id,
+                          currentTask.status
+                        )
+                        return (
+                          <div key={comment.id} className="rounded-xl border border-slate-200 bg-surface-card p-3 opacity-80">
+                            <div className="flex items-start justify-between gap-3">
+                              <p className="min-w-0 truncate text-xs text-slate-500">
+                                {formatPerson(comment.author) || '—'} · {formatDate(locale, comment.created_at)}
+                                {comment.folded_into_description ? ` · ${t('comments.folded')}` : ''}
+                              </p>
+                              {canRestore && (
+                                <button
+                                  type="button"
+                                  disabled={appIsStale || commentArchiveBusy === comment.id}
+                                  onClick={() => void changeCommentArchived(comment.id, false)}
+                                  title={appIsStale ? t('comments.staleApp') : t('attachments.restore')}
+                                  className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-qira-pistachio-dk transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <RotateCcw size={12} />
+                                  {t('attachments.restore')}
+                                </button>
+                              )}
+                            </div>
+                            <MarkdownRenderer source={comment.body} members={members} className="mt-1 text-slate-500" />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="mt-6 rounded-2xl border border-slate-200 bg-surface-card p-4">

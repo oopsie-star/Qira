@@ -443,6 +443,13 @@ export interface TaskComment {
   attachments: string[]
   created_at:  string
   updated_at:  string
+  /** Set while the comment is archived (out of the working area, restorable). */
+  archived_at?:             string | null
+  archived_by?:             string | null
+  archived_by_agent?:       string | null
+  /** Archived because its content was moved into the task description. */
+  folded_into_description?: boolean
+  edited_at?:               string | null
   author?:     Profile | null
 }
 

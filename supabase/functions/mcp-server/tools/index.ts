@@ -1,6 +1,7 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.8'
 
 import { addComment } from './addComment.ts'
+import { archiveComment, restoreComment, updateComment } from './commentArchive.ts'
 import { archiveAttachment, restoreAttachment } from './archiveAttachment.ts'
 import { attachEpicFile } from './attachEpicFile.ts'
 import { attachSprintFile } from './attachSprintFile.ts'
@@ -47,6 +48,9 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   attach_epic_file: attachEpicFile,
   attach_sprint_file: attachSprintFile,
   rename_attachment: renameAttachment,
+  archive_comment: archiveComment,
+  restore_comment: restoreComment,
+  update_comment: updateComment,
   archive_attachment: archiveAttachment,
   restore_attachment: restoreAttachment,
   replace_attachment: replaceAttachment,

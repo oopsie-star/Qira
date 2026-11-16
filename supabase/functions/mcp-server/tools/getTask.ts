@@ -50,7 +50,7 @@ export async function getTask(admin: SupabaseClient, args: GetTaskArgs) {
   const [commentsRes, activitiesRes, fieldChangesRes, attachmentNotesRes, lastAgentRes, linksRes] = await Promise.all([
     admin
       .from('task_comments')
-      .select('id, author_id, body, created_at')
+      .select('id, author_id, body, created_at, edited_at, archived_at, archived_by, archived_by_agent, folded_into_description')
       .eq('task_id', task.id)
       .order('created_at'),
     admin
@@ -97,7 +97,11 @@ export async function getTask(admin: SupabaseClient, args: GetTaskArgs) {
     (linksRes.data ?? []) as unknown as SupersedeLinkRow[],
   )
 
-  const comments = commentsRes.data ?? []
+  // Live comments are the working area; archived ones (including those folded
+  // into the description) are counted, and listed only on request.
+  const allComments = commentsRes.data ?? []
+  const comments = allComments.filter((c) => !c.archived_at)
+  const archivedComments = allComments.filter((c) => c.archived_at)
   const activities = activitiesRes.data ?? []
   const fieldChanges = fieldChangesRes.data ?? []
   const noteByPath = new Map((attachmentNotesRes.data ?? []).map((n) => [n.path, n]))
@@ -117,6 +121,12 @@ export async function getTask(admin: SupabaseClient, args: GetTaskArgs) {
 
   const profileIds = new Set<string>()
   for (const c of comments) profileIds.add(c.author_id)
+  if (args.include_archived === true) {
+    for (const c of archivedComments) {
+      profileIds.add(c.author_id)
+      if (c.archived_by) profileIds.add(c.archived_by)
+    }
+  }
   for (const a of activities) if (a.actor_id) profileIds.add(a.actor_id)
   for (const f of fieldChanges) if (f.changed_by) profileIds.add(f.changed_by)
   if (task.assignee_id) profileIds.add(task.assignee_id)
@@ -172,10 +182,27 @@ export async function getTask(admin: SupabaseClient, args: GetTaskArgs) {
     sprint_id: task.sprint_id,
     due_date: task.due_date,
     comments: comments.map((c) => ({
+      id: c.id,
       author_email: emailById.get(c.author_id) ?? c.author_id,
       body: c.body,
       created_at: c.created_at,
+      ...(c.edited_at ? { edited_at: c.edited_at } : {}),
     })),
+    archived_comments_count: archivedComments.length,
+    ...(args.include_archived === true
+      ? {
+          archived_comments: archivedComments.map((c) => ({
+            id: c.id,
+            author_email: emailById.get(c.author_id) ?? c.author_id,
+            body: c.body,
+            created_at: c.created_at,
+            archived_at: c.archived_at,
+            archived_by_email: c.archived_by ? emailById.get(c.archived_by) ?? c.archived_by : null,
+            archived_by_agent: c.archived_by_agent ?? null,
+            folded_into_description: c.folded_into_description === true,
+          })),
+        }
+      : {}),
     attachments,
     archived_attachments_count: archivedPaths.length,
     // Asked for explicitly: each archived file with when, by whom and its
