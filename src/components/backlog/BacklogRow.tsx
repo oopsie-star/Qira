@@ -97,7 +97,7 @@ export function BacklogRow({ task, index, mobile = false, dragDisabled = false, 
   // concern from the colour, so it stays untouched here.)
   const unstarted = isUnstartedTodo(task)
   const reworded = Boolean(task.formulation_changed_at)
-  const workStarted = workStartedSummary(task, members, locale)
+  const workStarted = workStartedSummary(task, members, locale, true)
   const blocked = isTaskBlocked(task.id, taskLinks, tasks)
   const disciplines = useMemo(
     () => taskDisciplines(task, members, placeholders, projectMembers),

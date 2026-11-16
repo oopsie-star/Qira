@@ -33,13 +33,19 @@ export function workTransitionFor(
   return unclaimed && role && role !== 'viewer' ? 'take' : null
 }
 
-/** "Taken into work: Anna, 12 Nov 14:05 — “starting with the API”", or null. */
+/**
+ * "Taken into work: Anna, 12 Nov 14:05 — “starting with the API”", or null.
+ * A done_status mark (done, no recorded start) is not a start: cards and rows
+ * leave it out (`startsOnly`); the drawer shows it as "closed".
+ */
 export function workStartedSummary(
   task: Pick<Task, 'work_started_at' | 'work_started_by' | 'work_started_signal' | 'work_started_note'>,
   members: Profile[],
   locale: string,
+  startsOnly = false,
 ): { who: string; when: string; note: string | null; signal: string } | null {
   if (!task.work_started_at) return null
+  if (startsOnly && task.work_started_signal === 'done_status') return null
   const person = members.find((member) => member.id === task.work_started_by)
   const who = person ? person.full_name || person.email : '—'
   const when = new Date(task.work_started_at).toLocaleString(locale === 'en' ? 'en-GB' : 'ru-RU', {

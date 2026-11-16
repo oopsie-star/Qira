@@ -9,7 +9,11 @@
 --       take_in_work — the assignee pressed "Take into work" and wrote what they
 --                      understood and where they start (>= 15 characters);
 --       implicit     — the assignee commented or attached a file without it;
---       legacy       — reconstructed below from history, for existing tasks.
+--       legacy       — reconstructed below from history, for existing tasks;
+--       done_status  — the task is done, without a recorded start: a closed
+--                      task's text records what was delivered, so it is
+--                      protected like started work. Kept apart from a real
+--                      start so reports can tell them apart.
 --     A status of in_progress set by someone else, or over MCP, is only a status.
 --   * one policy (task_edit_policy) applied by a trigger to every title or
 --     description change, from the app, the assistant and MCP alike:
@@ -40,10 +44,10 @@ alter table public.tasks
 
 alter table public.tasks drop constraint if exists tasks_work_started_signal_check;
 alter table public.tasks add constraint tasks_work_started_signal_check
-  check (work_started_signal is null or work_started_signal in ('take_in_work', 'implicit', 'legacy'));
+  check (work_started_signal is null or work_started_signal in ('take_in_work', 'implicit', 'legacy', 'done_status'));
 
 comment on column public.tasks.work_started_signal is
-  'How we know the assignee started: take_in_work (button + comment), implicit (their comment/file), legacy (from history). Null = not started.';
+  'How we know the work started: take_in_work (button + comment), implicit (the assignee''s comment/file), legacy (from history), done_status (done without a recorded start). Null = not started.';
 
 alter table public.task_comments
   add column if not exists comment_type text not null default 'comment';
@@ -109,6 +113,13 @@ update public.tasks tk
        work_started_signal = 'legacy'
   from first_ev f
  where tk.id = f.task_id;
+
+-- Done, and still no start recorded: protected as closed, dated by completion.
+update public.tasks
+   set work_started_at = coalesce(completed_at, status_changed_at, updated_at),
+       work_started_by = null,
+       work_started_signal = 'done_status'
+ where status = 'done' and work_started_at is null;
 
 alter table public.tasks enable trigger user;
 
@@ -401,6 +412,12 @@ begin
     new.formulation_changed_at := null;
   end if;
 
+  -- A task closed without a recorded start is protected from now on too.
+  if new.status = 'done' and old.status is distinct from 'done' and new.work_started_at is null then
+    new.work_started_at := now();
+    new.work_started_signal := 'done_status';
+  end if;
+
   if new.title is not distinct from old.title and new.description is not distinct from old.description then
     return new;
   end if;
@@ -409,8 +426,13 @@ begin
     v_owner := auth.uid() is not null and public.can_override_project_delete(old.project_id);
     if not v_owner then
       select coalesce(nullif(p.full_name, ''), p.email) into v_who from public.profiles p where p.id = old.work_started_by;
-      raise exception '% is already in work: % started it on % (signal: %). The title and description can no longer be edited in place.',
-        old.key, coalesce(v_who, 'the assignee'), to_char(old.work_started_at at time zone 'UTC', 'YYYY-MM-DD HH24:MI "UTC"'), old.work_started_signal
+      raise exception '%',
+        case when old.work_started_signal = 'done_status'
+          then format('%s is done (closed on %s): its text records what was delivered and can no longer be edited in place. New requirements go into a new task or a new revision.',
+                      old.key, to_char(old.work_started_at at time zone 'UTC', 'YYYY-MM-DD HH24:MI "UTC"'))
+          else format('%s is already in work: %s started it on %s (signal: %s). The title and description can no longer be edited in place.',
+                      old.key, coalesce(v_who, 'the assignee'), to_char(old.work_started_at at time zone 'UTC', 'YYYY-MM-DD HH24:MI "UTC"'), old.work_started_signal)
+        end
         using errcode = 'P0001',
               hint = case when auth.uid() is null
                 then 'EDIT_POLICY:owner_approval_required — create a new revision with create_task_revision, or ask a project owner to edit it in place.'
@@ -638,8 +660,10 @@ $$;
  * The only way to make a new revision of a task: explicit, by a project
  * member (not a viewer) or MCP. The revision is a new To do task with the
  * given (or the old) title and description and the old one's fields; the
- * chosen live files and live comments MOVE to it; it supersedes the old task,
- * which is archived. Not subject to the edit policy: nothing is edited in place.
+ * chosen live files and live comments MOVE to it, and so do the old task's
+ * open subtasks (closed ones stay with it, as history); it supersedes the old
+ * task, which is archived. Not subject to the edit policy: nothing is edited
+ * in place.
  */
 create or replace function public.create_task_revision(
   p_task          uuid,
@@ -662,6 +686,7 @@ declare
   v_new   public.tasks%rowtype;
   v_files text[];
   v_moved_comments integer;
+  v_subtasks text[];
   v_reason text := nullif(btrim(coalesce(p_reason, '')), '');
 begin
   if auth.uid() is not null then
@@ -709,6 +734,21 @@ begin
   )
   returning * into v_new;
 
+  insert into public.task_links (project_id, source_task_id, target_task_id, link_type, created_by)
+  values (v_old.project_id, v_new.id, v_old.id, 'supersedes', v_actor)
+  on conflict do nothing;
+
+  -- Open subtasks follow the revision; closed ones stay as the old task's history.
+  with moved as (
+    update public.tasks
+       set parent_task_id = v_new.id
+     where parent_task_id = v_old.id
+       and id <> v_new.id
+       and status not in ('done', 'cancelled', 'archived', 'deleted')
+    returning key
+  )
+  select coalesce(array_agg(key order by key), '{}') into v_subtasks from moved;
+
   perform set_config('qira.attachment_move', 'on', true);
   perform set_config('qira.revision', v_old.id::text, true);
   update public.tasks
@@ -725,10 +765,6 @@ begin
   update public.task_comment_edits e set task_id = v_new.id
     from public.task_comments c
    where e.comment_id = c.id and c.task_id = v_new.id;
-
-  insert into public.task_links (project_id, source_task_id, target_task_id, link_type, created_by)
-  values (v_old.project_id, v_new.id, v_old.id, 'supersedes', v_actor)
-  on conflict do nothing;
 
   insert into public.task_activities (project_id, task_id, actor_id, activity_type, message)
   values
@@ -748,6 +784,7 @@ begin
     'old_task_id', v_old.id, 'old_key', v_old.key,
     'new_task_id', v_new.id, 'new_key', v_new.key,
     'moved_attachments', cardinality(v_files), 'moved_comments', v_moved_comments,
+    'moved_subtasks', to_jsonb(v_subtasks),
     'agent', p_agent
   );
 end;

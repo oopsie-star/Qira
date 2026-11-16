@@ -176,7 +176,7 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
   {
     name: 'get_edit_policy',
     description:
-      'Whether a task\'s title and description can be edited in place now: work_started (by its assignee), when, by whom, the signal (take_in_work / implicit / legacy), and edit_mode — in_place, or owner_approval_required for an agent on a started task.',
+      'Whether a task\'s title and description can be edited in place now: work_started (by its assignee — or done_status: a done task is closed and protected the same way), when, by whom, the signal (take_in_work / implicit / legacy / done_status), and edit_mode — in_place, or owner_approval_required for an agent on a started task.',
     inputSchema: {
       type: 'object',
       properties: { task: { type: 'string', description: 'Task key or id.' } },
@@ -186,7 +186,7 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
   {
     name: 'create_task_revision',
     description:
-      `The only way to make a new revision of a task — explicitly, when its text must change after the assignee started. Creates a new To do task with the new title/description and the old task's fields, moves the files and comments you choose to it, links it as superseding the old one, archives the old one, and notifies the assignee with your reason. Use it only after your human agreed to a new revision.${CROSS_AGENT_NOTE}`,
+      `The only way to make a new revision of a task — explicitly, when its text must change after the assignee started. Creates a new To do task with the new title/description and the old task's fields, moves the files and comments you choose and every open subtask to it (closed subtasks stay with the old task as history), links it as superseding the old one, archives the old one, and notifies the assignee with your reason. Use it only after your human agreed to a new revision.${CROSS_AGENT_NOTE}`,
     inputSchema: {
       type: 'object',
       properties: {

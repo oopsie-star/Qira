@@ -29,7 +29,7 @@ export interface Task {
   /** Archived out of `attachments` (stage 2); restorable. */
   work_started_at?: string | null
   work_started_by?: string | null
-  work_started_signal?: 'take_in_work' | 'implicit' | 'legacy' | null
+  work_started_signal?: 'take_in_work' | 'implicit' | 'legacy' | 'done_status' | null
   archived_attachments: string[]
   created_at: string
   updated_at: string

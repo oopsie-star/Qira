@@ -221,7 +221,8 @@ export interface Task {
   /** Stage 4a: when, by whom and how the ASSIGNEE started the work; null = not started. */
   work_started_at?:     string | null
   work_started_by?:     string | null
-  work_started_signal?: 'take_in_work' | 'implicit' | 'legacy' | null
+  /** done_status: done without a recorded start — closed, protected the same way. */
+  work_started_signal?: 'take_in_work' | 'implicit' | 'legacy' | 'done_status' | null
   /** The assignee's own words when taking it into work. */
   work_started_note?:   string | null
   /** For a frontend task: the screen (a task in the screen-registry epic) it implements. */

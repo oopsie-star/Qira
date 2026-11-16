@@ -66,7 +66,7 @@ export interface EditPolicy {
   started_at: string | null
   started_by: string | null
   started_by_name: string | null
-  signal: 'take_in_work' | 'implicit' | 'legacy' | null
+  signal: 'take_in_work' | 'implicit' | 'legacy' | 'done_status' | null
   /** An owner may edit a started task in place — after choosing to. */
   owner: boolean
   edit_mode: 'in_place' | 'owner_approval_required' | 'rejected'

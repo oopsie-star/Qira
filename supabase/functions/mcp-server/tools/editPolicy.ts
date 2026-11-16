@@ -16,7 +16,7 @@ export interface EditPolicy {
   started_at: string | null
   started_by: string | null
   started_by_name: string | null
-  signal: 'take_in_work' | 'implicit' | 'legacy' | null
+  signal: 'take_in_work' | 'implicit' | 'legacy' | 'done_status' | null
   owner: boolean
   edit_mode: 'in_place' | 'owner_approval_required' | 'rejected'
 }
@@ -138,6 +138,8 @@ export async function createTaskRevision(admin: SupabaseClient, args: CreateRevi
     archived_task: result.old_key,
     moved_attachments: result.moved_attachments,
     moved_comments: result.moved_comments,
+    // Open subtasks follow the revision; closed ones stay with the archived task.
+    moved_subtasks: result.moved_subtasks ?? [],
   }
 }
 

@@ -92,7 +92,7 @@ function fixture() {
     old.attachments = (old.attachments as string[]).filter((p) => !files.includes(p))
     const ids = params.p_comment_ids as string[]
     for (const c of db.tables.task_comments) if (ids.includes(c.id as string)) c.task_id = 't-new'
-    return { data: { old_task_id: old.id, old_key: old.key, new_task_id: 't-new', new_key: 'P-3', moved_attachments: files.length, moved_comments: ids.length }, error: null }
+    return { data: { old_task_id: old.id, old_key: old.key, new_task_id: 't-new', new_key: 'P-3', moved_attachments: files.length, moved_comments: ids.length, moved_subtasks: ['P-9'] }, error: null }
   }
   return db
 }
@@ -176,7 +176,7 @@ Deno.test('create_task_revision needs a reason, moves what was chosen ("all"), a
   const out = await createTaskRevision(db as never, {
     task: 'P-2', description: 'v2 text', attachments: 'all', comments: 'all', reason: 'API contract changed', agent_name: 'claude',
   })
-  assertEquals(out, { new_task: 'P-3', archived_task: 'P-2', moved_attachments: 1, moved_comments: 2 })
+  assertEquals(out, { new_task: 'P-3', archived_task: 'P-2', moved_attachments: 1, moved_comments: 2, moved_subtasks: ['P-9'] })
   const call = db.rpcCalls.find((c) => c.fn === 'create_task_revision')!
   assertEquals(call.params.p_attachments, ['p-1/x/dev/1-a.zip'])
   assertEquals(call.params.p_comment_ids, ['c-take', 'c-2'])

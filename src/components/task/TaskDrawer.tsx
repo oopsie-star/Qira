@@ -686,8 +686,14 @@ export function TaskDrawer() {
 
             {workStarted && (
               <p className="mt-2 rounded-xl bg-qira-pistachio-lt/50 px-3 py-2 text-sm text-slate-700">
-                <span className="font-semibold">{t('work.startedLabel')}:</span> {workStarted.who}, {workStarted.when}
-                {workStarted.note ? <> — „{workStarted.note}“</> : <span className="text-slate-500"> · {t(`work.signal.${workStarted.signal}`)}</span>}
+                {workStarted.signal === 'done_status' ? (
+                  <><span className="font-semibold">{t('work.closedLabel')}:</span> {workStarted.when} <span className="text-slate-500">· {t('work.signal.done_status')}</span></>
+                ) : (
+                  <>
+                    <span className="font-semibold">{t('work.startedLabel')}:</span> {workStarted.who}, {workStarted.when}
+                    {workStarted.note ? <> — „{workStarted.note}“</> : <span className="text-slate-500"> · {t(`work.signal.${workStarted.signal}`)}</span>}
+                  </>
+                )}
               </p>
             )}
 

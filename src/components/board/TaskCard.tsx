@@ -37,7 +37,7 @@ export function TaskCard({ task, index }: TaskCardProps) {
   const profileRole = useStore((state) => state.profile?.role)
   const activeProjectRole = useStore((state) => state.activeProjectRole)
   const blocked = isTaskBlocked(task.id, taskLinks, tasks)
-  const workStarted = workStartedSummary(task, members, locale)
+  const workStarted = workStartedSummary(task, members, locale, true)
   const highPriority = task.priority === 'high' || task.priority === 'highest'
   const universal = isUniversalTask(task)
   const canManage = canManageProject(activeProjectRole, profileRole === 'admin')

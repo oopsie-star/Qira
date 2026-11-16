@@ -11,6 +11,7 @@ function startedLine(policy: EditPolicy, locale: string, t: ReturnType<typeof us
   const when = policy.started_at
     ? new Date(policy.started_at).toLocaleString(locale === 'en' ? 'en-GB' : 'ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
     : '—'
+  if (policy.signal === 'done_status') return t('edit.closedOn', { when })
   return t('edit.startedBy', {
     who: policy.started_by_name ?? '—',
     when,
