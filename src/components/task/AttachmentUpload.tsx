@@ -2,6 +2,7 @@
 import { Archive, ChevronDown, ChevronRight, FileText, Loader2, Mic, Music, RotateCcw, Square, Upload, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { setAttachmentArchived } from '@/lib/attachmentArchive'
+import { checkAppVersion, useAppIsStale } from '@/lib/appVersion'
 import { getErrorMessage } from '@/lib/errors'
 import { useI18n } from '@/lib/i18n'
 import { displayFilename, isImage, previewKind, safeFilename, storageBucket } from '@/lib/attachments'
@@ -56,6 +57,9 @@ export function AttachmentUpload({
   wide = false,
 }: AttachmentUploadProps) {
   const archiveMode = archivedAttachments !== undefined
+  // An outdated tab must not change files: its bundle may not know the rules
+  // (archive instead of delete) the current build and database follow.
+  const stale = useAppIsStale()
   const [archiveOpen, setArchiveOpen] = useState(false)
   const [archiveBusy, setArchiveBusy] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -104,8 +108,19 @@ export function AttachmentUpload({
     }
   }, [attachments])
 
+  // Re-asks the server just before a change, so a tab that has not polled
+  // since a deploy is still caught. Returns true when the change may go ahead.
+  async function ensureCurrent(): Promise<boolean> {
+    if (stale || (await checkAppVersion())) {
+      setError(t('attachments.staleApp'))
+      return false
+    }
+    return true
+  }
+
   async function uploadFiles(files: File[]) {
     if (!files.length) return
+    if (!(await ensureCurrent())) return
     setUploading(true)
     setError(null)
     const newPaths: string[] = []
@@ -194,6 +209,7 @@ export function AttachmentUpload({
 
   async function handleDelete(path: string) {
     if (!canDelete(getAttachmentAuthorId(path))) return
+    if (!(await ensureCurrent())) return
 
     if (archiveMode) {
       setError(null)
@@ -232,10 +248,11 @@ export function AttachmentUpload({
           ) : (
             <button
               type="button"
+              disabled={stale}
               onClick={() => void startRecording()}
               title={t('task.recordVoiceComment')}
               aria-label={t('task.recordVoiceComment')}
-              className="text-slate-400 transition hover:text-qira-pistachio"
+              className="text-slate-400 transition hover:text-qira-pistachio disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Mic size={16} />
             </button>
@@ -265,10 +282,10 @@ export function AttachmentUpload({
                       <button
                         type="button"
                         onClick={() => handleDelete(path)}
-                        disabled={archiveBusy === path}
+                        disabled={stale || archiveBusy === path}
                         title={archiveMode ? t('attachments.archive') : t('common.delete')}
                         aria-label={archiveMode ? t('attachments.archive') : t('common.delete')}
-                        className="shrink-0 rounded-lg p-1 text-slate-400 transition hover:bg-surface-card hover:text-slate-700"
+                        className="shrink-0 rounded-lg p-1 text-slate-400 transition hover:bg-surface-card hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         {archiveMode ? <Archive size={14} /> : <X size={14} />}
                       </button>
@@ -294,10 +311,10 @@ export function AttachmentUpload({
                         <button
                           type="button"
                           onClick={() => handleDelete(path)}
-                          disabled={archiveBusy === path}
+                          disabled={stale || archiveBusy === path}
                           title={archiveMode ? t('attachments.archive') : t('common.delete')}
                           aria-label={archiveMode ? t('attachments.archive') : t('common.delete')}
-                          className="rounded-lg p-1 text-slate-400 transition hover:bg-surface-card hover:text-slate-700"
+                          className="rounded-lg p-1 text-slate-400 transition hover:bg-surface-card hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           {archiveMode ? <Archive size={14} /> : <X size={14} />}
                         </button>
@@ -365,8 +382,9 @@ export function AttachmentUpload({
                   </span>
                   <button
                     type="button"
-                    disabled={archiveBusy === path}
+                    disabled={stale || archiveBusy === path}
                     onClick={async () => {
+                      if (!(await ensureCurrent())) return
                       setError(null)
                       setArchiveBusy(path)
                       try {
@@ -390,25 +408,31 @@ export function AttachmentUpload({
         </div>
       )}
 
+      {stale && !error && (
+        <p className="mb-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">{t('attachments.staleApp')}</p>
+      )}
+
       {error && (
         <p className="mb-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-600">{error}</p>
       )}
 
       <div
         role="button"
-        tabIndex={0}
-        onClick={() => fileInputRef.current?.click()}
+        tabIndex={stale ? -1 : 0}
+        aria-disabled={stale}
+        onClick={() => !stale && fileInputRef.current?.click()}
         onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') fileInputRef.current?.click()
+          if (!stale && (event.key === 'Enter' || event.key === ' ')) fileInputRef.current?.click()
         }}
         onDragOver={(event) => {
           event.preventDefault()
-          setDragOver(true)
+          if (!stale) setDragOver(true)
         }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
         className={[
-          'cursor-pointer rounded-2xl border border-dashed px-4 py-3 text-center transition',
+          'rounded-2xl border border-dashed px-4 py-3 text-center transition',
+          stale ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
           dragOver ? 'border-qira-pistachio bg-qira-pistachio-lt' : 'border-slate-200 bg-slate-50 hover:border-slate-300',
         ].join(' ')}
       >
