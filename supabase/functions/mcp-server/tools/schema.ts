@@ -40,6 +40,23 @@ const CONFIRMED_CROSS_AGENT_PROPERTY = {
     'Only set this to true after the human operator has explicitly confirmed the change, in response to this same call being rejected for a cross-agent conflict. Omit otherwise.',
 }
 
+// Integrity and chunking, shared by every tool that receives a file. One wrong
+// character in hand-copied base64 used to corrupt a file silently; now the
+// server hashes what it got and refuses a mismatch before saving anything.
+const UPLOAD_INTEGRITY_PROPERTIES = {
+  expected_md5: {
+    type: 'string',
+    description: 'MD5 of the whole file, 32 hex chars. Strongly recommended with content_base64: if what arrives hashes differently, nothing is saved and you get an error. The response always reports the md5 and size it stored.',
+  },
+  total_chunks: {
+    type: 'integer',
+    description: 'For large base64 files: split the bytes into 2-64 parts and send one call per part. Send chunk 0 first — its response carries upload_id — then the rest with that upload_id. The file is attached when the last part arrives.',
+  },
+  chunk_index: { type: 'integer', description: 'Which part this call carries, 0-based. Only with total_chunks.' },
+  upload_id: { type: 'string', description: 'From the response to chunk 0. Required for every later chunk.' },
+  chunk_md5: { type: 'string', description: 'Optional MD5 of this part alone; a mismatch rejects just this part so you can resend it.' },
+}
+
 const MAP_DISCIPLINES = ['backend', 'frontend', 'design', 'qa']
 
 const CROSS_AGENT_NOTE =
@@ -196,7 +213,7 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
   {
     name: 'attach_task_file',
     description:
-      `Attach a file to a task (max 20MB). Provide the file via "file" (preferred if your client supports openai/fileParams — e.g. ChatGPT) or "content_base64" (raw file content, base64-encoded — e.g. Claude Code, which reads the file itself). To mark a previous attachment as superseded, call rename_attachment on it with "УСТАРЕЛО " prefixed to its current name.${CROSS_AGENT_NOTE}`,
+      `Attach a file to a task (max 20MB). Provide the file via "file" (preferred if your client supports openai/fileParams — e.g. ChatGPT) or "content_base64" (raw file content, base64-encoded — e.g. Claude Code, which reads the file itself). With content_base64, pass expected_md5; for a large file, send it in chunks (total_chunks). To replace an existing file with a new version use replace_attachment — it archives the old one. Do NOT rename old files to "УСТАРЕЛО": archive them.${CROSS_AGENT_NOTE}`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -205,6 +222,7 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
         file: FILE_PARAM_PROPERTY,
         content_base64: { type: 'string', description: 'Raw file bytes, base64-encoded. Use this OR file, not both.' },
         mime_type: { type: 'string', description: 'Optional MIME type, e.g. "application/pdf". Falls back to file.mime_type.' },
+        ...UPLOAD_INTEGRITY_PROPERTIES,
         agent_name: AGENT_NAME_PROPERTY,
         confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
       },
@@ -224,6 +242,7 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
         file: FILE_PARAM_PROPERTY,
         content_base64: { type: 'string', description: 'Raw file bytes, base64-encoded. Use this OR file, not both.' },
         mime_type: { type: 'string' },
+        ...UPLOAD_INTEGRITY_PROPERTIES,
         agent_name: AGENT_NAME_PROPERTY,
         confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
       },
@@ -243,6 +262,7 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
         file: FILE_PARAM_PROPERTY,
         content_base64: { type: 'string', description: 'Raw file bytes, base64-encoded. Use this OR file, not both.' },
         mime_type: { type: 'string' },
+        ...UPLOAD_INTEGRITY_PROPERTIES,
         agent_name: AGENT_NAME_PROPERTY,
         confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
       },
@@ -251,9 +271,57 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
     _meta: { 'openai/fileParams': ['file'] },
   },
   {
+    name: 'archive_attachment',
+    description:
+      `Move an attachment to the archive — out of the task/epic/sprint's live file list, but kept and restorable with restore_attachment. Use this for files that are outdated or superseded instead of renaming them. Safe to repeat.${CROSS_AGENT_NOTE}`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'The attachment path, from get_task/get_project.' },
+        agent_name: AGENT_NAME_PROPERTY,
+        confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
+      },
+      required: ['path', 'agent_name'],
+    },
+  },
+  {
+    name: 'restore_attachment',
+    description:
+      `Bring an archived attachment back into the live file list. Archived paths are listed by get_task with include_archived: true. Safe to repeat.${CROSS_AGENT_NOTE}`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'The archived attachment path.' },
+        agent_name: AGENT_NAME_PROPERTY,
+        confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
+      },
+      required: ['path', 'agent_name'],
+    },
+  },
+  {
+    name: 'replace_attachment',
+    description:
+      `Upload a new version of an attachment and archive the old one in a single step — the way to publish "v2 of this package". The new file goes to the same task/epic/sprint and keeps the old file's name unless you give filename. The old file is archived only after the new one is fully stored and its checksum matches, so a failed upload leaves everything as it was.${CROSS_AGENT_NOTE}`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        old_path: { type: 'string', description: 'Path of the live attachment being replaced.' },
+        filename: { type: 'string', description: 'Optional new filename; defaults to the old file name.' },
+        file: FILE_PARAM_PROPERTY,
+        content_base64: { type: 'string', description: 'Raw file bytes, base64-encoded. Use this OR file, not both.' },
+        mime_type: { type: 'string', description: 'Optional MIME type.' },
+        ...UPLOAD_INTEGRITY_PROPERTIES,
+        agent_name: AGENT_NAME_PROPERTY,
+        confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
+      },
+      required: ['old_path', 'agent_name'],
+    },
+    _meta: { 'openai/fileParams': ['file'] },
+  },
+  {
     name: 'rename_attachment',
     description:
-      `Rename an attachment (works for task, epic, or sprint attachments alike — pass the path from get_task/get_project's attachments list). To mark it as superseded by a new attachment you just created, set new_name to "УСТАРЕЛО " + its current name.${CROSS_AGENT_NOTE}`,
+      `Rename an attachment (works for task, epic, or sprint attachments alike — pass the path from get_task/get_project's attachments list). Renaming is for fixing a name — to retire an old version use archive_attachment or replace_attachment, never an "УСТАРЕЛО" prefix.${CROSS_AGENT_NOTE}`,
     inputSchema: {
       type: 'object',
       properties: {

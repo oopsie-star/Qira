@@ -10,7 +10,7 @@ export function isUuid(value: string): boolean {
 }
 
 const TASK_COLUMNS =
-  'id, project_id, key, title, description, status, issue_type, priority, epic_id, sprint_id, assignee_id, reporter_id, assignee_ids, due_date, attachments, created_at, updated_at'
+  'id, project_id, key, title, description, status, issue_type, priority, epic_id, sprint_id, assignee_id, reporter_id, assignee_ids, due_date, attachments, archived_attachments, created_at, updated_at'
 
 export async function resolveProjectByKey(admin: SupabaseClient, key: string): Promise<Project> {
   const { data, error } = await admin.from('projects').select('id, key, name').eq('key', key).maybeSingle()
@@ -43,12 +43,12 @@ export async function resolveEpicByKeyOrTitle(
   projectId: string,
   ref: string,
 ): Promise<{ id: string; attachments: string[] }> {
-  const { data, error } = await admin
-    .from('epics')
-    .select('id, attachments')
-    .eq('project_id', projectId)
-    .or(`key.eq.${ref},title.eq.${ref}`)
-    .maybeSingle()
+  // An id is accepted too — replace_attachment reaches the epic from a file's
+  // storage path, which carries the id, not the key. Before this an id simply
+  // failed to match, so accepting it changes no existing call.
+  let query = admin.from('epics').select('id, attachments').eq('project_id', projectId)
+  query = isUuid(ref) ? query.eq('id', ref) : query.or(`key.eq.${ref},title.eq.${ref}`)
+  const { data, error } = await query.maybeSingle()
   if (error) throw new ToolError(`Failed to look up epic "${ref}": ${error.message}`)
   if (!data) throw new ToolError(`Epic "${ref}" not found in this project.`)
   return data
@@ -60,7 +60,9 @@ export async function resolveSprintByName(
   ref: string,
   epicId?: string,
 ): Promise<{ id: string; attachments: string[] }> {
-  let query = admin.from('sprints').select('id, attachments').eq('project_id', projectId).eq('name', ref)
+  // Accepts the sprint's id as well as its name, for the same reason as epics.
+  let query = admin.from('sprints').select('id, attachments').eq('project_id', projectId)
+  query = isUuid(ref) ? query.eq('id', ref) : query.eq('name', ref)
   if (epicId) query = query.eq('epic_id', epicId)
   const { data, error } = await query.maybeSingle()
   if (error) throw new ToolError(`Failed to look up sprint "${ref}": ${error.message}`)

@@ -62,6 +62,7 @@ export function TaskDrawer() {
   const taskActivities = useStore((state) => state.taskActivities)
   const taskFieldChanges = useStore((state) => state.taskFieldChanges)
   const updateTask = useStore((state) => state.updateTask)
+  const patchTask = useStore((state) => state.patchTask)
   const deleteTask = useStore((state) => state.deleteTask)
   const requestEntityDeletion = useStore((state) => state.requestEntityDeletion)
   const createSubtask = useStore((state) => state.createSubtask)
@@ -619,6 +620,8 @@ export function TaskDrawer() {
                 attachments={currentTask.attachments}
                 canDelete={(authorId) => canDeleteAuthoredContent(activeProjectRole, isSuperAdmin, profile?.id ?? null, authorId, currentTask.status)}
                 onAttachmentsChange={(paths) => updateTask(currentTask.id, { attachments: paths })}
+                archivedAttachments={currentTask.archived_attachments ?? []}
+                onArchiveChange={(live, archived) => patchTask(currentTask.id, { attachments: live, archived_attachments: archived })}
               />
             </div>
 

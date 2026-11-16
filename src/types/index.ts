@@ -132,6 +132,7 @@ export interface Epic {
   parent_portfolio_item_id: string | null
   created_by:               string | null
   attachments:              string[]
+  archived_attachments?:     string[]
   created_at:               string
   is_vision:                boolean
   /** The project's screen registry: each task in this epic is a screen, done = drawn by the designer. */
@@ -151,6 +152,7 @@ export interface Sprint {
   end_date:   string | null
   created_by: string | null
   attachments: string[]
+  archived_attachments?: string[]
   created_at: string
 }
 
@@ -205,6 +207,8 @@ export interface Task {
   reporter_placeholder_id?: string | null
   due_date:       string | null
   attachments:    string[]
+  /** Storage paths archived out of `attachments` (stage 2). Restorable; who/when lives on attachment_notes. */
+  archived_attachments?: string[]
   // Jira rich-content import: raw ADF body + media refs extracted from it.
   // Both are null for tasks not imported from Jira (or with no rich body).
   jira_description_adf?:   AdfNode | null

@@ -554,6 +554,9 @@ interface AppState {
   deleteTask: (id: string) => Promise<void>
   moveTask: (taskId: string, toStatus: TaskStatus, toIndex: number) => Promise<void>
   patchTask: (id: string, fields: Partial<Task>) => void
+  /** Local-only, like patchTask: for when the database was already written (e.g. by an RPC). */
+  patchEpic: (id: string, fields: Partial<Epic>) => void
+  patchSprint: (id: string, fields: Partial<Sprint>) => void
   createSprint: (fields: Partial<Sprint>) => Promise<Sprint | null>
   updateSprint: (id: string, fields: Partial<Sprint>) => Promise<void>
   startSprint: (id: string) => Promise<void>
@@ -2404,6 +2407,18 @@ export const useStore = create<AppState>((set, get) => {
     }))
   },
 
+  patchEpic: (id, fields) => {
+    set((state) => ({
+      epics: state.epics.map((epic) => (epic.id === id ? { ...epic, ...fields } : epic)),
+    }))
+  },
+
+  patchSprint: (id, fields) => {
+    set((state) => ({
+      sprints: state.sprints.map((sprint) => (sprint.id === id ? { ...sprint, ...fields } : sprint)),
+    }))
+  },
+
   moveTask: async (taskId, toStatus, toIndex) => {
     const tasks = get().tasks
     const task = tasks.find((item) => item.id === taskId)
@@ -2681,6 +2696,9 @@ export const useStore = create<AppState>((set, get) => {
       parent_portfolio_item_id: null,
       created_by: sprint.created_by,
       attachments: sprint.attachments,
+      // The source sprint is deleted below — carry its archive across too, or
+      // every archived file would be detached for good by the conversion.
+      archived_attachments: sprint.archived_attachments ?? [],
     })
     if (!epic) return null
 
@@ -2730,6 +2748,8 @@ export const useStore = create<AppState>((set, get) => {
       status: statusMap[epic.status],
       created_by: epic.created_by,
       attachments: epic.attachments,
+      // The source epic is deleted below — carry its archive across too.
+      archived_attachments: epic.archived_attachments ?? [],
     })
     if (!sprint) return null
 

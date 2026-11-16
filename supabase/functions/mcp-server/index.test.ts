@@ -55,6 +55,7 @@ Deno.test('handleRequest: tools/list returns every tool schema without touching 
     body.result.tools.map((t) => t.name).sort(),
     [
       'add_comment',
+      'archive_attachment',
       'attach_epic_file',
       'attach_sprint_file',
       'attach_task_file',
@@ -73,6 +74,8 @@ Deno.test('handleRequest: tools/list returns every tool schema without touching 
       'post_project_map_qa',
       'read_attachment',
       'rename_attachment',
+      'replace_attachment',
+      'restore_attachment',
       'search_tasks',
       'unlink_supersedes',
       'update_task',

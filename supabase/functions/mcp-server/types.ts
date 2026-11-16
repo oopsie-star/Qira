@@ -26,6 +26,8 @@ export interface Task {
   assignee_ids: string[]
   due_date: string | null
   attachments: string[]
+  /** Archived out of `attachments` (stage 2); restorable. */
+  archived_attachments: string[]
   created_at: string
   updated_at: string
 }

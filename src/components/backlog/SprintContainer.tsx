@@ -48,6 +48,7 @@ export function SprintContainer({
   const completeSprint = useStore((state) => state.completeSprint)
   const reopenSprint = useStore((state) => state.reopenSprint)
   const updateSprint = useStore((state) => state.updateSprint)
+  const patchSprint = useStore((state) => state.patchSprint)
   const deleteSprint = useStore((state) => state.deleteSprint)
   const convertSprintToEpic = useStore((state) => state.convertSprintToEpic)
   const requestEntityDeletion = useStore((state) => state.requestEntityDeletion)
@@ -264,6 +265,8 @@ export function SprintContainer({
                   attachments={sprint.attachments}
                   canDelete={(authorId) => canDeleteAttachment(activeProjectRole, isSuperAdmin, profile?.id ?? null, authorId)}
                   onAttachmentsChange={(paths) => updateSprint(sprint.id, { attachments: paths })}
+                  archivedAttachments={sprint.archived_attachments ?? []}
+                  onArchiveChange={(live, archived) => patchSprint(sprint.id, { attachments: live, archived_attachments: archived })}
                   wide
                 />
               </div>

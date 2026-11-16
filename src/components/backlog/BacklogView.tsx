@@ -603,6 +603,7 @@ export function BacklogView() {
   const taskLinks = useStore((state) => state.taskLinks)
   const updateTask = useStore((state) => state.updateTask)
   const updateEpic = useStore((state) => state.updateEpic)
+  const patchEpic = useStore((state) => state.patchEpic)
   const proposeEpicFieldChange = useStore((state) => state.proposeEpicFieldChange)
   const reassignAuthor = useStore((state) => state.reassignAuthor)
   const deleteEpic = useStore((state) => state.deleteEpic)
@@ -1220,6 +1221,8 @@ export function BacklogView() {
                             attachments={epic.attachments}
                             canDelete={(authorId) => canDeleteAttachment(activeProjectRole, isSuperAdmin, profileId, authorId)}
                             onAttachmentsChange={(paths) => updateEpic(epic.id, { attachments: paths })}
+                            archivedAttachments={epic.archived_attachments ?? []}
+                            onArchiveChange={(live, archived) => patchEpic(epic.id, { attachments: live, archived_attachments: archived })}
                             wide
                           />
                         )}

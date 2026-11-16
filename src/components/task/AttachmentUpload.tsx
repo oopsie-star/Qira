@@ -1,6 +1,7 @@
 ﻿import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
-import { FileText, Loader2, Mic, Music, Square, Upload, X } from 'lucide-react'
+import { Archive, ChevronDown, ChevronRight, FileText, Loader2, Mic, Music, RotateCcw, Square, Upload, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { setAttachmentArchived } from '@/lib/attachmentArchive'
 import { getErrorMessage } from '@/lib/errors'
 import { useI18n } from '@/lib/i18n'
 import { displayFilename, isImage, previewKind, safeFilename, storageBucket } from '@/lib/attachments'
@@ -26,6 +27,15 @@ interface AttachmentUploadProps {
   /** Whether the given uploader (path's author id) may delete a given attachment. */
   canDelete: (authorId: string | null) => boolean
   onAttachmentsChange: (paths: string[]) => Promise<void>
+  /**
+   * Passing this turns removal into archiving: the file moves to the archive
+   * through set_attachment_archived and stays restorable, nothing is deleted.
+   * Only tasks, epics and sprints have an archive — a caller that omits this
+   * (the project map) keeps the old delete.
+   */
+  archivedAttachments?: string[]
+  /** Local-only update after an archive/restore — the RPC has already written the database. */
+  onArchiveChange?: (live: string[], archived: string[]) => void
   /** Use the full page width on desktop (more columns) — for full-width contexts like an epic/sprint section, not the narrow task drawer. */
   wide?: boolean
 }
@@ -41,8 +51,13 @@ export function AttachmentUpload({
   attachments,
   canDelete,
   onAttachmentsChange,
+  archivedAttachments,
+  onArchiveChange,
   wide = false,
 }: AttachmentUploadProps) {
+  const archiveMode = archivedAttachments !== undefined
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  const [archiveBusy, setArchiveBusy] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { t } = useI18n()
   const attachmentNotes = useStore((state) => state.attachmentNotes)
@@ -179,6 +194,21 @@ export function AttachmentUpload({
 
   async function handleDelete(path: string) {
     if (!canDelete(getAttachmentAuthorId(path))) return
+
+    if (archiveMode) {
+      setError(null)
+      setArchiveBusy(path)
+      try {
+        await setAttachmentArchived(path, true)
+        onArchiveChange?.(attachments.filter((item) => item !== path), [...(archivedAttachments ?? []), path])
+      } catch (err) {
+        setError(getErrorMessage(err))
+      } finally {
+        setArchiveBusy(null)
+      }
+      return
+    }
+
     await supabase.storage.from(storageBucket(path)).remove([path])
     if (attachmentNotes[path]) void updateAttachmentNote(path, '')
     await onAttachmentsChange(attachments.filter((item) => item !== path))
@@ -235,9 +265,12 @@ export function AttachmentUpload({
                       <button
                         type="button"
                         onClick={() => handleDelete(path)}
+                        disabled={archiveBusy === path}
+                        title={archiveMode ? t('attachments.archive') : t('common.delete')}
+                        aria-label={archiveMode ? t('attachments.archive') : t('common.delete')}
                         className="shrink-0 rounded-lg p-1 text-slate-400 transition hover:bg-surface-card hover:text-slate-700"
                       >
-                        <X size={14} />
+                        {archiveMode ? <Archive size={14} /> : <X size={14} />}
                       </button>
                     )}
                   </div>
@@ -261,9 +294,12 @@ export function AttachmentUpload({
                         <button
                           type="button"
                           onClick={() => handleDelete(path)}
+                          disabled={archiveBusy === path}
+                          title={archiveMode ? t('attachments.archive') : t('common.delete')}
+                          aria-label={archiveMode ? t('attachments.archive') : t('common.delete')}
                           className="rounded-lg p-1 text-slate-400 transition hover:bg-surface-card hover:text-slate-700"
                         >
-                          <X size={14} />
+                          {archiveMode ? <Archive size={14} /> : <X size={14} />}
                         </button>
                       )}
                     </div>
@@ -306,6 +342,52 @@ export function AttachmentUpload({
         </>
       ) : (
         <p className="mb-4 text-sm text-slate-500">{t('task.noFiles')}</p>
+      )}
+
+      {archiveMode && (archivedAttachments?.length ?? 0) > 0 && (
+        <div className="mb-4 rounded-xl bg-slate-50 px-3 py-2">
+          <button
+            type="button"
+            onClick={() => setArchiveOpen((value) => !value)}
+            aria-expanded={archiveOpen}
+            className="flex w-full items-center gap-2 text-left text-xs font-semibold text-slate-500 transition hover:text-slate-700"
+          >
+            {archiveOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <Archive size={13} />
+            {t('attachments.archived')} · {archivedAttachments?.length}
+          </button>
+          {archiveOpen && (
+            <ul className="mt-2 space-y-1">
+              {archivedAttachments?.map((path) => (
+                <li key={path} className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
+                    {displayFilename(path, attachmentNotes[path]?.original_name)}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={archiveBusy === path}
+                    onClick={async () => {
+                      setError(null)
+                      setArchiveBusy(path)
+                      try {
+                        await setAttachmentArchived(path, false)
+                        onArchiveChange?.([...attachments, path], (archivedAttachments ?? []).filter((item) => item !== path))
+                      } catch (err) {
+                        setError(getErrorMessage(err))
+                      } finally {
+                        setArchiveBusy(null)
+                      }
+                    }}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-qira-pistachio-dk transition hover:bg-surface-card disabled:opacity-50"
+                  >
+                    <RotateCcw size={12} />
+                    {t('attachments.restore')}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       {error && (

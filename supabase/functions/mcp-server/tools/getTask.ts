@@ -39,10 +39,13 @@ export async function getTask(admin: SupabaseClient, args: GetTaskArgs) {
       status: task.status,
       archived: true,
       archived_comments_count: count ?? 0,
-      archived_attachments_count: task.attachments.length,
+      archived_attachments_count: task.attachments.length + (task.archived_attachments?.length ?? 0),
       note: 'This task is archived. Pass include_archived: true to see its description, comments and attachments.',
     }
   }
+
+  const archivedPaths: string[] = task.archived_attachments ?? []
+  const allPaths = [...task.attachments, ...archivedPaths]
 
   const [commentsRes, activitiesRes, fieldChangesRes, attachmentNotesRes, lastAgentRes, linksRes] = await Promise.all([
     admin
@@ -60,12 +63,12 @@ export async function getTask(admin: SupabaseClient, args: GetTaskArgs) {
       .select('id, field_name, old_value, new_value, changed_by, changed_at')
       .eq('task_id', task.id)
       .order('changed_at'),
-    task.attachments.length
+    allPaths.length
       ? admin
           .from('attachment_notes')
-          .select('path, original_name, mime_type')
+          .select('path, original_name, mime_type, size_bytes, md5, archived_at, archived_by, archived_by_agent')
           .eq('project_id', task.project_id)
-          .in('path', task.attachments)
+          .in('path', allPaths)
       : Promise.resolve({ data: [], error: null }),
     admin
       .from('agent_audit_log')
@@ -98,9 +101,18 @@ export async function getTask(admin: SupabaseClient, args: GetTaskArgs) {
   const activities = activitiesRes.data ?? []
   const fieldChanges = fieldChangesRes.data ?? []
   const noteByPath = new Map((attachmentNotesRes.data ?? []).map((n) => [n.path, n]))
+  // Live files only: an archived file is out of `attachments` by construction.
+  // size_bytes / md5 are filled from stage 2 on; older uploads get them in the
+  // stage 8 data migration, until then null.
   const attachments = task.attachments.map((path) => {
     const note = noteByPath.get(path)
-    return { path, name: displayFilename(path, note?.original_name), mime_type: note?.mime_type ?? null }
+    return {
+      path,
+      name: displayFilename(path, note?.original_name),
+      mime_type: note?.mime_type ?? null,
+      size_bytes: note?.size_bytes ?? null,
+      md5: note?.md5 ?? null,
+    }
   })
 
   const profileIds = new Set<string>()
@@ -110,6 +122,12 @@ export async function getTask(admin: SupabaseClient, args: GetTaskArgs) {
   if (task.assignee_id) profileIds.add(task.assignee_id)
   for (const id of task.assignee_ids ?? []) profileIds.add(id)
   if (task.reporter_id) profileIds.add(task.reporter_id)
+  if (args.include_archived === true) {
+    for (const path of archivedPaths) {
+      const by = noteByPath.get(path)?.archived_by
+      if (by) profileIds.add(by)
+    }
+  }
 
   const emailById = new Map<string, string>()
   if (profileIds.size) {
@@ -159,6 +177,26 @@ export async function getTask(admin: SupabaseClient, args: GetTaskArgs) {
       created_at: c.created_at,
     })),
     attachments,
+    archived_attachments_count: archivedPaths.length,
+    // Asked for explicitly: each archived file with when, by whom and its
+    // checksum, so the right one can be told apart and restored.
+    ...(args.include_archived === true
+      ? {
+          archived_attachments: archivedPaths.map((path) => {
+            const note = noteByPath.get(path)
+            return {
+              path,
+              name: displayFilename(path, note?.original_name),
+              mime_type: note?.mime_type ?? null,
+              archived_at: note?.archived_at ?? null,
+              archived_by_email: note?.archived_by ? emailById.get(note.archived_by) ?? note.archived_by : null,
+              archived_by_agent: note?.archived_by_agent ?? null,
+              size_bytes: note?.size_bytes ?? null,
+              md5: note?.md5 ?? null,
+            }
+          }),
+        }
+      : {}),
     last_ai_agent: lastAgentRes.data
       ? { agent_name: lastAgentRes.data.agent_name, action_type: lastAgentRes.data.action_type, at: lastAgentRes.data.created_at }
       : null,
