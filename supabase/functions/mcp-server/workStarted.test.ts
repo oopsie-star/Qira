@@ -7,7 +7,7 @@
 
 import { assertEquals, assertRejects, assertStringIncludes } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 
-import { FakeAdmin } from './testing/fakeAdmin.ts'
+import { FakeAdmin, installOwnerRequestFakes } from './testing/fakeAdmin.ts'
 import { createTaskRevision, getEditPolicy, lineDiff, listDescriptionVersions, restoreDescriptionVersion } from './tools/editPolicy.ts'
 import { ToolError } from './tools/errors.ts'
 import { getTask } from './tools/getTask.ts'
@@ -107,15 +107,17 @@ Deno.test('update_task edits an unstarted task in place and says so', async () =
   assertEquals(db.tables.tasks.length, 2) // nothing forked
 })
 
-Deno.test('update_task on a started task is refused with the options, and changes NOTHING — not even the other fields', async () => {
+Deno.test('update_task on a started task files an owner request and changes NOTHING — not even the other fields', async () => {
   const db = fixture()
-  const err = await assertRejects(
-    () => updateTask(db as never, { task: 'P-2', description: 'rewrite', priority: 'high', agent_name: 'claude' }),
-    ToolError,
-  )
-  assertStringIncludes(err.message, 'edit_mode: owner_approval_required')
-  assertStringIncludes(err.message, 'create_task_revision')
-  assertStringIncludes(err.message, 'Show this refusal to the human')
+  installOwnerRequestFakes(db)
+  const out = await updateTask(db as never, { task: 'P-2', description: 'rewrite', priority: 'high', agent_name: 'claude' }) as Record<string, unknown>
+  assertEquals(out.status, 'awaiting_owner_approval')
+  assertEquals(out.request_id, 1)
+  assertStringIncludes(String(out.message), 'request №1')
+  assertStringIncludes(String(out.message), 'request_id: 1')
+  const filed = db.tables.owner_requests[0]
+  assertEquals([filed.request_type, filed.task_id, JSON.stringify(filed.params)], ['edit_in_place', 't-started', '{"description":"rewrite"}'])
+  assertEquals((filed.preview as Record<string, unknown>).description_diff, ['- line 1', '- line 2', '+ rewrite'])
   const t = db.tables.tasks.find((x) => x.id === 't-started')!
   assertEquals([t.description, t.priority], ['line 1\nline 2', 'medium'])
   assertEquals(db.tables.tasks.length, 2)
@@ -204,8 +206,12 @@ Deno.test('versions: an edit records the original and the new text; restore brin
   assertEquals(db.rpcCalls.at(-1)!.params.p_mode, 'restore')
 })
 
-Deno.test('restore on a started task is refused like any edit', async () => {
+Deno.test('restore on a started task files an owner request like any edit', async () => {
   const db = fixture()
+  installOwnerRequestFakes(db)
   db.tables.task_description_versions.push({ task_id: 't-started', version: 1, title: 'old', description: 'old', edit_mode: 'original', created_at: '2026-11-01T00:00:00Z' })
-  await assertRejects(() => restoreDescriptionVersion(db as never, { task: 'P-2', version: 1, agent_name: 'claude' }), ToolError, 'owner_approval_required')
+  const out = await restoreDescriptionVersion(db as never, { task: 'P-2', version: 1, agent_name: 'claude' }) as Record<string, unknown>
+  assertEquals(out.status, 'awaiting_owner_approval')
+  assertEquals(JSON.stringify(db.tables.owner_requests[0].params), '{"title":"old","description":"old"}')
+  assertEquals(db.tables.tasks.find((x) => x.id === 't-started')!.description, 'line 1\nline 2')
 })

@@ -8,6 +8,7 @@ import { IssueTypeBadge, PriorityBadge } from '@/components/common/IssueBadges'
 import { UserAvatar } from '@/components/common/UserAvatar'
 import { AttachmentUpload } from './AttachmentUpload'
 import { EditPolicyDialog, RevisionDialog, type EditChoice } from './EditPolicyDialogs'
+import { OwnerRequestCard } from '@/components/common/OwnerRequests'
 import { VoiceCommentary } from './VoiceCommentary'
 import { TaskChangeHistory } from './TaskChangeHistory'
 import { JiraDescriptionRenderer } from './JiraDescriptionRenderer'
@@ -75,6 +76,7 @@ export function TaskDrawer() {
   const createTaskLink = useStore((state) => state.createTaskLink)
   const setTaskCommentArchived = useStore((state) => state.setTaskCommentArchived)
   const requestStatusChange = useStore((state) => state.requestStatusChange)
+  const ownerRequests = useStore((state) => state.ownerRequests)
   const getEditPolicy = useStore((state) => state.getEditPolicy)
   const deleteTaskLink = useStore((state) => state.deleteTaskLink)
   const fetchTaskContext = useStore((state) => state.fetchTaskContext)
@@ -696,6 +698,12 @@ export function TaskDrawer() {
                 )}
               </p>
             )}
+
+            {ownerRequests.filter((request) => request.task_id === currentTask.id).map((request) => (
+              <div key={request.id} className="mt-3">
+                <OwnerRequestCard request={request} />
+              </div>
+            ))}
 
             <VoiceCommentary attachments={currentTask.attachments} taskId={currentTask.id} />
 

@@ -10,6 +10,7 @@ import { RealtimeSync } from '@/components/common/RealtimeSync'
 import { Toaster } from '@/components/common/Toaster'
 import { UpdateBanner } from '@/components/common/UpdateBanner'
 import { WorkTransitionModal } from '@/components/task/WorkTransitionModal'
+import { OwnerRequestsInbox } from '@/components/common/OwnerRequests'
 import { WeeklyDigestModal } from '@/components/common/WeeklyDigestModal'
 import { useAuthContext } from '@/auth/AuthContext'
 import { useStore } from '@/store'
@@ -111,6 +112,7 @@ export function GlobalLayout({ children }: GlobalLayoutProps) {
       <TopNavbar onToggleSidebar={() => setSidebarOpen((v) => !v)} />
       <UpdateBanner />
       <WorkTransitionModal />
+      <OwnerRequestsInbox />
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {sidebarOpen && (
           <div

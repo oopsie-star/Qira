@@ -16,6 +16,7 @@ import { readFileSync } from 'node:fs'
 import { createClient } from '@supabase/supabase-js'
 
 import {
+  OWNER_REQUEST_SELECT,
   TASK_ACTIVITY_SELECT,
   TASK_COMMENT_SELECT,
   TASK_FIELD_CHANGE_SELECT,
@@ -64,6 +65,15 @@ const checks: Check[] = [
     supabase.rpc('set_attachment_archived', { p_path: 'smoke/none', p_archived: true }), '42501'],
   ['Task drawer', 'archive comment (rpc)', () =>
     supabase.rpc('set_comment_archived', { p_comment: ID, p_archived: true }), '42501'],
+  // Stage 4b: owner requests — the inbox query and the three functions.
+  ['Requests', 'owner requests (inbox)', () =>
+    supabase.from('owner_requests').select(OWNER_REQUEST_SELECT).eq('project_id', ID).in('status', ['pending', 'approved'])
+      .is('used_at', null).order('created_at', { ascending: false })],
+  ['Requests', 'decide (rpc)', () => supabase.rpc('decide_owner_request', { p_request: 1, p_approve: false, p_note: null }), '42501'],
+  ['Requests', 'file (rpc, MCP only)', () =>
+    supabase.rpc('create_owner_request', { p_type: 'purge_trash', p_project: ID, p_task: null, p_params: {}, p_preview: {}, p_reason: null, p_actor: null, p_agent: null }), '42501'],
+  ['Requests', 'apply (rpc, MCP only)', () =>
+    supabase.rpc('apply_owner_request', { p_request: 1, p_type: 'purge_trash', p_task: null, p_params: {}, p_actor: null, p_agent: null }), '42501'],
   // Stage 4a: starting work, the edit policy, revisions.
   ['Task drawer', 'take in work (rpc)', () => supabase.rpc('take_in_work', { p_task: ID, p_comment: 'smoke check only' }), '42501'],
   ['Task drawer', 'back to to do (rpc)', () => supabase.rpc('return_to_todo', { p_task: ID, p_comment: 'smoke check only' }), '42501'],

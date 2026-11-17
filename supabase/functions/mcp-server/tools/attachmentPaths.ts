@@ -196,3 +196,13 @@ export async function resolveAttachmentBytes(args: { content_base64?: string; fi
   if (args.content_base64) return decodeAttachmentBase64(args.content_base64)
   throw new ToolError('Provide either "content_base64" or "file" (a { download_url, file_id } reference, e.g. ChatGPT\'s openai/fileParams).')
 }
+
+// Port of src/lib/attachments.ts storageBucket: user uploads live in
+// "attachments" (project/owner/author/file), Jira imports in
+// "task-attachments" (three segments). Keep in sync.
+export function storageBucket(path: string): 'attachments' | 'task-attachments' {
+  const parts = path.split('/')
+  if (parts.length >= 4 && UUID_RE.test(parts[2])) return 'attachments'
+  if (parts.length === 3) return 'task-attachments'
+  return 'attachments'
+}

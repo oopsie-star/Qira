@@ -82,4 +82,10 @@ export const PROJECT_DELETION_REQUEST_SELECT = `
   approvals:project_deletion_approvals(admin_id, approved_at)
 `
 
+export const OWNER_REQUEST_SELECT = `
+  id, project_id, task_id, request_type, params, preview, reason, requested_by_agent, status,
+  decided_by, decided_at, decision_note, used_at, created_at, expires_at,
+  task:tasks!owner_requests_task_id_fkey(id, key, title)
+`
+
 export const TASK_FIELD_CHANGE_SELECT = `*, profile:profiles(id, full_name, email)`

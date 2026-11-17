@@ -290,3 +290,70 @@ export const fakeUpdateCommentBody: RpcHandler = (params, db) => {
   Object.assign(row, { body, edited_at: '2026-11-16T12:00:00Z' })
   return { data: { ...base, changed: true }, error: null }
 }
+
+/** Canonical JSON for comparing params as jsonb equality does (key order ignored). */
+function canon(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canon).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value as Row).sort().map((k) => `${JSON.stringify(k)}:${canon((value as Row)[k])}`).join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+/**
+ * create_owner_request / apply_owner_request as the SQL behaves
+ * (20261118000000): dedupe of open identical requests; apply only an
+ * approved, unused request of the same type, task and params; one use.
+ * Tests approve a request by setting its status, as an owner's click would.
+ */
+export function installOwnerRequestFakes(db: FakeAdmin) {
+  db.tables.owner_requests ??= []
+  db.rpcHandlers.create_owner_request = (params) => {
+    const open = db.tables.owner_requests.find((r) => r.request_type === params.p_type && r.task_id === params.p_task
+      && canon(r.params) === canon(params.p_params) && (r.status === 'pending' || r.status === 'approved'))
+    if (open) return { data: { request_id: open.id, status: open.status, existing: true }, error: null }
+    const row = {
+      id: db.tables.owner_requests.length + 1, project_id: params.p_project, task_id: params.p_task, request_type: params.p_type,
+      params: params.p_params, preview: params.p_preview, reason: params.p_reason, requested_by_agent: params.p_agent,
+      status: 'pending', used_at: null, expires_at: '2099-01-01T00:00:00Z',
+    }
+    db.tables.owner_requests.push(row)
+    return { data: { request_id: row.id, status: 'pending', existing: false }, error: null }
+  }
+  db.rpcHandlers.apply_owner_request = (params) => {
+    const r = db.tables.owner_requests.find((x) => x.id === params.p_request)
+    if (!r) return { data: null, error: { message: `request ${params.p_request} does not exist` } }
+    const fail = (why: string) => ({ data: null, error: { message: `request ${r.id} ${why}`, hint: `OWNER_REQUEST:${r.status}` } as { message: string } })
+    if (r.status === 'pending') return fail('is still waiting for an owner\'s decision')
+    if (r.status === 'rejected') return fail('was rejected')
+    if (r.status === 'used') return fail('has already been used — a request works once')
+    if (r.request_type !== params.p_type) return fail(`is for ${r.request_type}`)
+    if (r.task_id !== params.p_task) return fail('is for a different task')
+    if (canon(r.params) !== canon(params.p_params)) return fail('was approved for different parameters — send exactly what was requested')
+    let result: Row = {}
+    if (r.request_type === 'edit_in_place') {
+      const t = db.tables.tasks.find((x) => x.id === r.task_id)!
+      const p = r.params as Row
+      if (p.title !== undefined) t.title = p.title
+      if (p.description !== undefined) t.description = p.description
+      result = { task_id: t.id, edit_mode: 'approved' }
+    } else if (r.request_type === 'delete_attachment') {
+      const path = (r.params as Row).path as string
+      for (const table of ['tasks', 'epics', 'sprints']) {
+        for (const row of db.tables[table] ?? []) {
+          row.attachments = ((row.attachments as string[]) ?? []).filter((x) => x !== path)
+          row.archived_attachments = ((row.archived_attachments as string[]) ?? []).filter((x) => x !== path)
+        }
+      }
+      result = { paths: [path] }
+    } else {
+      const ids = (r.params as Row).task_ids as string[]
+      const gone = db.tables.tasks.filter((t) => ids.includes(t.id as string) || ids.includes(t.parent_task_id as string))
+      db.tables.tasks = db.tables.tasks.filter((t) => !gone.includes(t))
+      result = { deleted: gone.map((t) => t.key), skipped: [], paths: gone.flatMap((t) => [...((t.attachments as string[]) ?? []), ...((t.archived_attachments as string[]) ?? [])]) }
+    }
+    r.status = 'used'
+    r.used_at = '2026-11-18T00:00:00Z'
+    return { data: { ...result, request_id: r.id }, error: null }
+  }
+}

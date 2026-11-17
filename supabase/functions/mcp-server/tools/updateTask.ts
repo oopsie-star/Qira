@@ -1,7 +1,8 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.8'
 
 import { checkCrossAgentConflict, resolveAgentName } from './agentGate.ts'
-import { editRefusal } from './editPolicy.ts'
+import { editRefusal, lineDiff } from './editPolicy.ts'
+import { fileOrApply, parseRequestId } from './ownerRequests.ts'
 import { ToolError } from './errors.ts'
 import {
   resolveEpicByKeyOrTitle,
@@ -22,6 +23,7 @@ interface UpdateTaskArgs {
   epic?: string
   sprint?: string
   labels?: string[]
+  request_id?: unknown
   agent_name?: string
   confirmed_cross_agent?: boolean
 }
@@ -64,16 +66,49 @@ export async function updateTask(admin: SupabaseClient, args: UpdateTaskArgs) {
   // first, so a refusal leaves the whole call unapplied — never half of it.
   // Nothing ever creates a new task here.
   let editMode: string | undefined
+  const requestId = parseRequestId(args.request_id)
+  if (requestId !== undefined && !textChange) {
+    throw new ToolError('"request_id" is for the title/description edit it was filed for — send the same title/description with it.')
+  }
   if (textChange) {
-    const { data: edit, error: editError } = await admin.rpc('edit_task_text', {
-      p_task: task.id,
-      p_title: args.title ?? null,
-      p_description: args.description ?? null,
-      p_actor: reporterId,
-      p_agent: agentName,
-    })
-    if (editError) throw editRefusal(editError) ?? new ToolError(`Failed to update task: ${editError.message}`)
-    editMode = (edit as { edit_mode?: string } | null)?.edit_mode ?? 'in_place'
+    // Exactly the fields sent: the repeat call with request_id must match.
+    const textParams: Record<string, string> = {
+      ...(args.title !== undefined ? { title: args.title } : {}),
+      ...(args.description !== undefined ? { description: args.description } : {}),
+    }
+    if (requestId !== undefined) {
+      await fileOrApply(admin, {
+        type: 'edit_in_place', projectId: task.project_id, taskId: task.id, params: textParams, preview: {},
+        reason: null, requestId, agentName, actorId: reporterId,
+      })
+      editMode = 'approved'
+    } else {
+      const { data: edit, error: editError } = await admin.rpc('edit_task_text', {
+        p_task: task.id,
+        p_title: args.title ?? null,
+        p_description: args.description ?? null,
+        p_actor: reporterId,
+        p_agent: agentName,
+      })
+      if (editError) {
+        // Stage 4b: an agent's edit of a started task becomes a request to
+        // the owners. Nothing — not even the other fields — is applied now.
+        if ((editError.hint ?? '').startsWith('EDIT_POLICY:owner_approval_required')) {
+          return await fileOrApply(admin, {
+            type: 'edit_in_place', projectId: task.project_id, taskId: task.id, params: textParams,
+            preview: {
+              task: task.key,
+              ...(args.title !== undefined && args.title !== task.title ? { title_from: task.title, title_to: args.title } : {}),
+              ...(args.description !== undefined ? { description_diff: lineDiff(task.description ?? '', args.description) } : {}),
+              refused_because: editError.message,
+            },
+            reason: `update_task on ${task.key}`, agentName, actorId: reporterId,
+          })
+        }
+        throw editRefusal(editError) ?? new ToolError(`Failed to update task: ${editError.message}`)
+      }
+      editMode = (edit as { edit_mode?: string } | null)?.edit_mode ?? 'in_place'
+    }
   }
 
   let data: Record<string, unknown> | null = null

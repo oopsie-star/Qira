@@ -154,7 +154,7 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
   {
     name: 'update_task',
     description:
-      `Update a task's title, description, priority, due date, assignee, epic, sprint, or labels. For status changes, use update_task_status instead. Title and description follow the edit policy: once the assignee has started the work, an agent's edit is refused — show the refusal to your human and offer create_task_revision, or an owner editing it in the Qira app; never retry or work around it. Check first with get_edit_policy. The response carries edit_mode.${CROSS_AGENT_NOTE}`,
+      `Update a task's title, description, priority, due date, assignee, epic, sprint, or labels. For status changes, use update_task_status instead. Title and description follow the edit policy: once the assignee has started the work (or the task is done), an agent's edit is not applied — the server files an owner request and answers with its number ("awaiting_owner_approval"). Tell your human; once an owner approves it in Qira, repeat the same call with request_id. The other option is create_task_revision. Nothing is applied while a request is open. The response carries edit_mode.${CROSS_AGENT_NOTE}`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -167,6 +167,10 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
         epic: { type: 'string', description: 'Epic key or title, resolved within the project. Empty string clears it.' },
         sprint: { type: 'string', description: 'Sprint name, resolved within the project. Empty string clears it.' },
         labels: { type: 'array', items: { type: 'string' } },
+        request_id: {
+          type: 'integer',
+          description: 'The owner request number Qira gave you. Repeat the SAME call with it once an owner has approved the request in Qira; it works once.',
+        },
         agent_name: AGENT_NAME_PROPERTY,
         confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
       },
@@ -230,10 +234,79 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
       properties: {
         task: { type: 'string', description: 'Task key or id.' },
         version: { type: 'integer' },
+        request_id: {
+          type: 'integer',
+          description: 'The owner request number Qira gave you. Repeat the SAME call with it once an owner has approved the request in Qira; it works once.',
+        },
         agent_name: AGENT_NAME_PROPERTY,
         confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
       },
       required: ['task', 'version', 'agent_name'],
+    },
+  },
+  {
+    name: 'delete_attachment',
+    description:
+      `Delete a file for good — only when archiving it is not enough (e.g. it must not be kept at all). Needs an owner's approval: the first call files a request and answers with its number; repeat the same call with request_id once an owner approves it in Qira. To retire an outdated file, use archive_attachment instead — no approval needed.${CROSS_AGENT_NOTE}`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'The attachment path (get_task; include_archived lists archived files).' },
+        reason: { type: 'string', description: 'Why it must go for good — the owner reads this. Required for the first call.' },
+        request_id: {
+          type: 'integer',
+          description: 'The owner request number Qira gave you. Repeat the SAME call with it once an owner has approved the request in Qira; it works once.',
+        },
+        agent_name: AGENT_NAME_PROPERTY,
+        confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
+      },
+      required: ['path', 'agent_name'],
+    },
+  },
+  {
+    name: 'purge_task',
+    description:
+      `Delete an archived or deleted task for good, with its comments, history and files (and its subtasks, which must all be in the trash too). Needs an owner's approval: the first call files a request listing what goes; repeat the same call with request_id once approved.${CROSS_AGENT_NOTE}`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: 'Task key or id of an archived/deleted task.' },
+        reason: { type: 'string', description: 'Why it must go for good — the owner reads this. Required for the first call.' },
+        request_id: {
+          type: 'integer',
+          description: 'The owner request number Qira gave you. Repeat the SAME call with it once an owner has approved the request in Qira; it works once.',
+        },
+        agent_name: AGENT_NAME_PROPERTY,
+        confirmed_cross_agent: CONFIRMED_CROSS_AGENT_PROPERTY,
+      },
+      required: ['task', 'agent_name'],
+    },
+  },
+  {
+    name: 'purge_trash',
+    description:
+      'Delete for good every archived and deleted task of a project, as listed when the request is filed. Needs an owner\'s approval: the first call files a request with the list; repeat the call with request_id once approved — it deletes exactly that list (tasks restored since, or with live subtasks, are skipped and reported).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project: { type: 'string', description: 'Project key.' },
+        reason: { type: 'string', description: 'Why the trash must be emptied — the owner reads this. Required for the first call.' },
+        request_id: {
+          type: 'integer',
+          description: 'The owner request number Qira gave you. Repeat the SAME call with it once an owner has approved the request in Qira; it works once.',
+        },
+        agent_name: AGENT_NAME_PROPERTY,
+      },
+      required: ['project', 'agent_name'],
+    },
+  },
+  {
+    name: 'get_owner_request',
+    description: 'The state of an owner request: pending, approved, rejected (with the owner\'s note), used or expired, and what it covers.',
+    inputSchema: {
+      type: 'object',
+      properties: { request_id: { type: 'integer' } },
+      required: ['request_id'],
     },
   },
   {

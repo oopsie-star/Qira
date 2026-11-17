@@ -2,6 +2,7 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.8
 
 import { checkCrossAgentConflict, resolveAgentName } from './agentGate.ts'
 import { ToolError } from './errors.ts'
+import { fileOrApply, parseRequestId } from './ownerRequests.ts'
 import { resolveMcpAgentProfileId, resolveTaskByKeyOrId } from './resolvers.ts'
 
 // Stage 4a. The policy itself lives in the database (task_edit_policy and the
@@ -23,9 +24,10 @@ export interface EditPolicy {
 
 /** What an agent must do with a refused edit: show it, and offer these. */
 export const EDIT_REFUSAL_INSTRUCTIONS =
-  'Do not retry and do not work around it. Show this refusal to the human you work with, and offer them the two options: ' +
-  '(1) create_task_revision — a new revision of the task with the new text (the old one is archived); or ' +
-  '(2) a project owner edits the task in place themselves in the Qira app.'
+  'Do not work around it. Show this to the human you work with, and offer: ' +
+  '(1) an owner approves the in-place edit — update_task files the request for you and answers with its number; repeat the same call with request_id once approved; ' +
+  '(2) create_task_revision — a new revision with the new text (the old one is archived); or ' +
+  '(3) a project owner edits the task in place themselves in the Qira app.'
 
 export async function fetchEditPolicy(admin: SupabaseClient, taskId: string): Promise<EditPolicy> {
   const { data, error } = await admin.rpc('task_edit_policy', { p_task: taskId })
@@ -233,7 +235,7 @@ export async function listDescriptionVersions(admin: SupabaseClient, args: { tas
 
 export async function restoreDescriptionVersion(
   admin: SupabaseClient,
-  args: { task?: string; version?: number; agent_name?: string; confirmed_cross_agent?: boolean },
+  args: { task?: string; version?: number; request_id?: unknown; agent_name?: string; confirmed_cross_agent?: boolean },
 ) {
   const ref = args.task?.trim()
   const agentName = resolveAgentName(args)
@@ -252,17 +254,34 @@ export async function restoreDescriptionVersion(
   if (!row) throw new ToolError(`${task.key} has no version ${args.version}.`)
 
   const actorId = await resolveMcpAgentProfileId(admin)
-  const { error: editError } = await admin.rpc('edit_task_text', {
-    p_task: task.id,
-    p_title: row.title,
-    p_description: row.description ?? '',
-    p_actor: actorId,
-    p_agent: agentName,
-    p_mode: 'restore',
-  })
-  if (editError) throw editRefusal(editError) ?? new ToolError(`Failed to restore version ${args.version}: ${editError.message}`)
+  const requestId = parseRequestId(args.request_id)
+  const textParams = { title: row.title as string, description: (row.description as string | null) ?? '' }
+  let editMode = 'in_place'
+  if (requestId !== undefined) {
+    await fileOrApply(admin, { type: 'edit_in_place', projectId: task.project_id, taskId: task.id, params: textParams, preview: {}, reason: null, requestId, agentName, actorId })
+    editMode = 'approved'
+  } else {
+    const { error: editError } = await admin.rpc('edit_task_text', {
+      p_task: task.id,
+      p_title: row.title,
+      p_description: row.description ?? '',
+      p_actor: actorId,
+      p_agent: agentName,
+      p_mode: 'restore',
+    })
+    if (editError) {
+      if ((editError.hint ?? '').startsWith('EDIT_POLICY:owner_approval_required')) {
+        return await fileOrApply(admin, {
+          type: 'edit_in_place', projectId: task.project_id, taskId: task.id, params: textParams,
+          preview: { task: task.key, restore_version: row.version, description_diff: lineDiff(task.description ?? '', textParams.description) },
+          reason: `restore version ${row.version} of ${task.key}`, agentName, actorId,
+        })
+      }
+      throw editRefusal(editError) ?? new ToolError(`Failed to restore version ${args.version}: ${editError.message}`)
+    }
+  }
 
-  const result = { task: task.key, restored_version: row.version, edit_mode: 'in_place' }
+  const result = { task: task.key, restored_version: row.version, edit_mode: editMode }
   const { error: auditError } = await admin.from('agent_audit_log').insert({
     agent_type: 'mcp',
     agent_name: agentName,

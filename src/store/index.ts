@@ -38,6 +38,7 @@ import type {
   TaskComment,
   TaskFieldChange,
   Task,
+  OwnerRequest,
   TaskLink,
   TaskLinkType,
   TaskStatus,
@@ -56,6 +57,7 @@ import {
   DELETION_REQUEST_SELECT,
   PROJECT_DELETION_REQUEST_SELECT,
   TASK_FIELD_CHANGE_SELECT,
+  OWNER_REQUEST_SELECT,
 } from './selects'
 
 /** task_edit_policy, for the signed-in user (stage 4a). */
@@ -523,6 +525,11 @@ interface AppState {
    * is NOT called — the window's RPC does the move. Otherwise `apply` runs.
    */
   workTransition: { taskId: string; kind: 'take' | 'return' } | null
+  /** Stage 4b: the active project's open owner requests (pending, or approved and not yet used). */
+  ownerRequests: OwnerRequest[]
+  fetchOwnerRequests: () => Promise<void>
+  /** Throws with the database's message (not an owner, already decided, expired). */
+  decideOwnerRequest: (id: number, approve: boolean, note?: string) => Promise<void>
   requestStatusChange: (taskId: string, toStatus: TaskStatus, apply: () => Promise<void> | void) => Promise<void>
   cancelWorkTransition: () => void
   /** Throws with the database's message, for the window to show. */
@@ -773,6 +780,7 @@ export const useStore = create<AppState>((set, get) => {
     notifications: [],
     taskComments: [], archivedTaskComments: [],
     workTransition: null,
+    ownerRequests: [],
     taskActivities: [],
     taskFieldChanges: [],
     tasks: [],
@@ -2413,6 +2421,29 @@ export const useStore = create<AppState>((set, get) => {
   },
 
   cancelWorkTransition: () => set({ workTransition: null }),
+
+  fetchOwnerRequests: async () => {
+    const projectId = get().activeProjectId
+    if (!projectId) {
+      set({ ownerRequests: [] })
+      return
+    }
+    const { data } = await supabase
+      .from('owner_requests')
+      .select(OWNER_REQUEST_SELECT)
+      .eq('project_id', projectId)
+      .in('status', ['pending', 'approved'])
+      .is('used_at', null)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+    set({ ownerRequests: (data ?? []) as unknown as OwnerRequest[] })
+  },
+
+  decideOwnerRequest: async (id, approve, note) => {
+    const { error } = await supabase.rpc('decide_owner_request', { p_request: id, p_approve: approve, p_note: note?.trim() || null })
+    if (error) throw new Error(error.message)
+    await get().fetchOwnerRequests()
+  },
 
   confirmWorkTransition: async (comment) => {
     const pending = get().workTransition

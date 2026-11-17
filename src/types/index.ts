@@ -441,6 +441,26 @@ export interface Notification {
   task?:             LinkedTaskSummary | null
 }
 
+/** Stage 4b: what an AI agent asked an owner to allow. */
+export interface OwnerRequest {
+  id:                 number
+  project_id:         string
+  task_id:            string | null
+  request_type:       'edit_in_place' | 'delete_attachment' | 'purge_task' | 'purge_trash'
+  params:             Record<string, unknown>
+  preview:            Record<string, unknown>
+  reason:             string | null
+  requested_by_agent: string | null
+  status:             'pending' | 'approved' | 'rejected' | 'used'
+  decided_by:         string | null
+  decided_at:         string | null
+  decision_note:      string | null
+  used_at:            string | null
+  created_at:         string
+  expires_at:         string
+  task?:              { id: string; key: string; title: string } | null
+}
+
 export interface TaskComment {
   id:          string
   project_id:  string
