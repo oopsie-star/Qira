@@ -323,7 +323,11 @@ export function installOwnerRequestFakes(db: FakeAdmin) {
   db.rpcHandlers.apply_owner_request = (params) => {
     const r = db.tables.owner_requests.find((x) => x.id === params.p_request)
     if (!r) return { data: null, error: { message: `request ${params.p_request} does not exist` } }
-    const fail = (why: string) => ({ data: null, error: { message: `request ${r.id} ${why}`, hint: `OWNER_REQUEST:${r.status}` } as { message: string } })
+    // As 20261118010000: a refusal is returned (so it can be logged), not raised.
+    const fail = (why: string) => {
+      ;(db.tables.owner_request_events ??= []).push({ request_id: r.id, event: 'refused', why })
+      return { data: { request_id: r.id, refused: true, status: r.status, why: `request ${r.id} ${why}` }, error: null }
+    }
     if (r.status === 'pending') return fail('is still waiting for an owner\'s decision')
     if (r.status === 'rejected') return fail('was rejected')
     if (r.status === 'used') return fail('has already been used — a request works once')

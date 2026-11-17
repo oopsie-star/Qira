@@ -71,6 +71,8 @@ Deno.test('edit: filed, then a repeat while pending says "still waiting" and cha
     'still waiting',
   )
   assertEquals(db.tables.tasks[0].description, 'old text')
+  // The refused attempt is logged (a refusal is returned, not raised).
+  assertEquals(db.tables.owner_request_events.map((e) => e.event), ['refused'])
 })
 
 Deno.test('edit: the same call again does not stack a second request', async () => {

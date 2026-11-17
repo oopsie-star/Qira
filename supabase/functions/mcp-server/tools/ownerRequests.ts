@@ -62,15 +62,17 @@ export async function fileOrApply(admin: SupabaseClient, req: FileOrApply): Prom
       p_actor: req.actorId,
       p_agent: req.agentName,
     })
-    if (error) {
-      const waiting = (error.hint ?? '').startsWith('OWNER_REQUEST:pending')
+    if (error) throw new ToolError(`Not done: ${error.message}. Nothing was changed.`)
+    // A refusal is an answer, not an error, so the database can log it.
+    const answer = data as { refused?: boolean; status?: string; why?: string } & Record<string, unknown>
+    if (answer?.refused) {
       throw new ToolError(
-        waiting
+        answer.status === 'pending'
           ? `Request №${req.requestId} is still waiting for an owner's decision in Qira. Tell your human, and repeat this call once it is approved.`
-          : `Not done: ${error.message}. Nothing was changed.`,
+          : `Not done: ${answer.why}. Nothing was changed.`,
       )
     }
-    return data as Record<string, unknown>
+    return answer
   }
 
   const { data, error } = await admin.rpc('create_owner_request', {
