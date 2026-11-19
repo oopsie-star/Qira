@@ -83,14 +83,21 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
   {
     name: 'get_task',
     description:
-      'Get full details of a task: description, status, live comments (each with its id), live attachments, change history, and last_ai_agent (which AI — claude/chatgpt/qira-assistant — last modified it, and when). Archived comments and files are counted (archived_comments_count, archived_attachments_count) and listed only with include_archived. superseded_by / supersedes list only live tasks; links to archived tasks are in supersede_history and do not make this task obsolete.',
+      'Get a task, compact by default: description, status, assignees, whether work was started, live comments (each with its id), live attachments (metadata only), all links (links: type, direction, other task), last_ai_agent, and counts of archived comments/attachments and of history entries (history_count). History is NOT included unless asked: include: ["history"], newest first, history_limit per page, then pass history_next_cursor as history_cursor; long values (description, long titles) appear as lengths only — the full texts are in list_description_versions. Long comment threads are cut to the latest 20: then comments_truncated { shown, omitted } is present — RULE: if comments_truncated.omitted > 0, read all comments (include: ["all_comments"]) before you edit the task. superseded_by / supersedes list only live tasks; links to archived tasks are in supersede_history and do not make this task obsolete.',
     inputSchema: {
       type: 'object',
       properties: {
         task: { type: 'string', description: 'Task key (e.g. "PROJ-42") or id (uuid).' },
+        include: {
+          type: 'array',
+          items: { type: 'string', enum: ['history', 'archived', 'all_comments'] },
+          description: '"history": the change history, paged. "archived": archived comments and attachments (with when, by whom, why); for an archived task, its full contents. "all_comments": every live comment, uncut.',
+        },
+        history_limit: { type: 'integer', description: 'History entries per page (1–100, default 20).' },
+        history_cursor: { type: 'string', description: 'history_next_cursor from the previous page.' },
         include_archived: {
           type: 'boolean',
-          description: 'Also list archived comments and archived attachments (with when, by whom, and why). For an archived or deleted task, return its full contents — without it such a task answers with a short summary and counts only.',
+          description: 'Same as include: ["archived"] (kept for compatibility).',
         },
       },
       required: ['task'],
