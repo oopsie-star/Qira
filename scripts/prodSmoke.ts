@@ -85,7 +85,7 @@ const checks: Check[] = [
   ['Files', 'share links (owners)', () =>
     supabase.from('file_share_links').select('id, path, created_by, created_at, expires_at, revoked_at, revoke_reason, use_count, last_used_at').eq('project_id', ID), '42501'],
   ['Files', 'access log (owners)', () =>
-    supabase.from('file_access_log').select('id, at, path, channel, purpose, actor_id, actor_agent, outcome, reason').eq('project_id', ID), '42501'],
+    supabase.from('file_access_log').select('id, at, path, channel, purpose, actor_id, actor_agent, outcome, reason, project_from_path').eq('project_id', ID), '42501'],
   ['Files', 'gate (rpc, server only)', () =>
     supabase.rpc('file_gate', { p_path: 'x', p_channel: 'app', p_purpose: 'view', p_actor: null, p_agent: null, p_share_token: null, p_range: null, p_ip: null, p_user_agent: null }), '42501'],
   ['Files', 'share (rpc)', () => supabase.rpc('create_file_share_links', { p_paths: [] }), '42501'],

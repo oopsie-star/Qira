@@ -28,6 +28,8 @@ interface AccessRow {
   actor_agent: string | null
   outcome: 'served' | 'denied'
   reason: string | null
+  /** The project came from the path, not a live record: a deleted or foreign path. */
+  project_from_path: boolean
 }
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—')
@@ -59,7 +61,7 @@ export function FileAccessPanel({ projectId }: { projectId: string }) {
         .select('id, path, created_by, created_at, expires_at, revoked_at, revoke_reason, use_count, last_used_at')
         .eq('project_id', projectId).order('created_at', { ascending: false }).limit(100),
       supabase.from('file_access_log')
-        .select('id, at, path, channel, purpose, actor_id, actor_agent, outcome, reason')
+        .select('id, at, path, channel, purpose, actor_id, actor_agent, outcome, reason, project_from_path')
         .eq('project_id', projectId).order('at', { ascending: false }).limit(100),
     ])
     if (l.error || a.error) setError((l.error ?? a.error)!.message)
@@ -146,7 +148,10 @@ export function FileAccessPanel({ projectId }: { projectId: string }) {
                 <tr key={r.id}>
                   <td className="whitespace-nowrap py-1 pr-3">{when(r.at)}</td>
                   <td className="py-1 pr-3">{r.channel === 'share' ? t('files.via.share') : personOf(r.actor_id, r.channel === 'mcp' ? (r.actor_agent ?? 'MCP') : null)}</td>
-                  <td className="max-w-[16rem] truncate py-1 pr-3">{nameOf(r.path)}</td>
+                  <td className="max-w-[16rem] truncate py-1 pr-3" title={r.project_from_path ? t('files.fromPathHint') : undefined}>
+                    {nameOf(r.path)}
+                    {r.project_from_path && <span className="ml-1 rounded bg-amber-50 px-1 text-amber-700">{t('files.fromPath')}</span>}
+                  </td>
                   <td className="py-1 pr-3">{t(`files.via.${r.channel}`)}{r.purpose === 'archive' ? ` · ${t('attachments.archived')}` : ''}</td>
                   <td className={`py-1 ${r.outcome === 'served' ? 'text-emerald-700' : 'text-rose-600'}`}>
                     {r.outcome === 'served' ? t('files.served') : t('files.denied', { why: r.reason ?? '' })}
