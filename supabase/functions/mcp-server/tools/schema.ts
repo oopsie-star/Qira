@@ -541,11 +541,12 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
   {
     name: 'read_attachment',
     description:
-      'Download an existing attachment\'s raw content as base64 — works for any file type, including archives, but returns raw bytes only (you cannot browse/unzip an archive through this — just fetch it). Use the path from get_task/get_project\'s attachments list.',
+      'Download an existing attachment\'s raw content as base64 — works for any file type, including archives, but returns raw bytes only (you cannot browse/unzip an archive through this — just fetch it). Use the path from get_task/get_project\'s attachments list. Only files attached to something live can be read: archived files, and files of trashed tasks, are not available through MCP. Every read is recorded in the file access log.',
     inputSchema: {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'The attachment\'s storage path, from get_task/get_project.' },
+        agent_name: { type: 'string', description: 'Who is reading (claude, codex, …), recorded in the file access log.' },
       },
       required: ['path'],
     },

@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
-import { displayFilename, storageBucket } from '@/lib/attachments'
+import { displayFilename } from '@/lib/attachments'
+import { fetchFile } from '@/lib/fileGateway'
 import { personById } from '@/lib/people'
 import type { Epic, JiraUserPlaceholder, Profile, Sprint, Task, TaskComment } from '@/types'
 
@@ -208,7 +209,7 @@ export async function exportEpicToZip(epic: Epic, ctx: EpicExportCtx): Promise<v
     const usedNames = new Set<string>()
     for (const path of task.attachments) {
       try {
-        const { data } = await supabase.storage.from(storageBucket(path)).download(path)
+        const data = await fetchFile(path)
         if (!data) continue
         let name = displayFilename(path, ctx.attachmentNotes[path]?.original_name)
         // De-dupe filenames within a task folder.

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
-import { storageBucket } from '@/lib/attachments'
+import { fileUrls } from '@/lib/fileGateway'
 
 export interface SignedAttachment {
   path: string
@@ -8,9 +7,9 @@ export interface SignedAttachment {
 }
 
 /**
- * Creates short-lived signed URLs for a list of attachment storage paths.
- * Resolves each against the correct bucket (user uploads vs Jira imports).
- * Returns the list plus a path→url lookup map for inline rendering.
+ * URLs for a list of attachment paths, through the file gateway (checked at
+ * every request; no storage signed URLs). Returns the list plus a path→url
+ * lookup map for inline rendering.
  */
 export function useSignedAttachments(attachments: string[]): {
   signed: SignedAttachment[]
@@ -29,15 +28,8 @@ export function useSignedAttachments(attachments: string[]): {
         setSigned([])
         return
       }
-      const results = await Promise.all(
-        attachments.map(async (path) => {
-          const { data } = await supabase.storage
-            .from(storageBucket(path))
-            .createSignedUrl(path, 3600)
-          return { path, signedUrl: data?.signedUrl ?? null }
-        }),
-      )
-      if (active) setSigned(results)
+      const urls = await fileUrls(attachments).catch(() => new Map<string, string>())
+      if (active) setSigned(attachments.map((path) => ({ path, signedUrl: urls.get(path) ?? null })))
     }
 
     void load()

@@ -102,15 +102,6 @@ export function previewKind(nameOrPath: string, mime?: string | null): PreviewKi
   return 'none'
 }
 
-/**
- * Embed URL for the Microsoft Office Online viewer. Renders doc(x)/xls(x)/ppt(x)
- * in an iframe. The file must be reachable over public HTTPS — Supabase signed
- * URLs are. NOTE: this sends the file to Microsoft's servers.
- */
-export function officeViewerUrl(fileUrl: string): string {
-  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`
-}
-
 /** Classify an attachment for rendering. Prefers the MIME type when supplied. */
 export function classifyAttachment(nameOrPath: string, mime?: string | null): AttachmentKind {
   if (mime) {

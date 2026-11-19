@@ -6,7 +6,7 @@ import { useI18n } from '@/lib/i18n'
 import { useAuthContext } from '@/auth/AuthContext'
 import { useStore } from '@/store'
 import { getLLMConfig } from '@/lib/ai'
-import { storageBucket } from '@/lib/attachments'
+import { fetchFile } from '@/lib/fileGateway'
 import { buildPrototypeBrief, selectMapBlocks, STITCH_URL, type PrototypePlatform } from '@/lib/prototypePrompt'
 import { generatePrototypeHtml, listPrototypes, nextPrototypeFilename, prototypeVersion } from '@/lib/prototype'
 import type { Task } from '@/types'
@@ -153,10 +153,9 @@ export function PrototypeModal({ task, onClose }: PrototypeModalProps) {
   async function handleLoadSaved(path: string) {
     setError(null)
     try {
-      const { data } = await supabase.storage.from(storageBucket(path)).createSignedUrl(path, 3600)
-      if (!data?.signedUrl) throw new Error(t('preview.unavailable'))
-      const response = await fetch(data.signedUrl)
-      setHtml(await response.text())
+      const file = await fetchFile(path)
+      if (!file) throw new Error(t('preview.unavailable'))
+      setHtml(await file.text())
       setTruncated(false)
       setSavedPath(path)
     } catch (err) {

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { ArrowLeftRight, CheckCircle, Link2, Mail, Plus, Send, ShieldCheck, Trash2, UserCheck, UserMinus, XCircle } from 'lucide-react'
 import { GlobalLayout } from '@/components/layout/GlobalLayout'
 import { UserAvatar } from '@/components/common/UserAvatar'
+import { FileAccessPanel } from '@/components/common/FileAccessPanel'
 import { useAuthContext } from '@/auth/AuthContext'
 import { parseSandboxDeliveryNote } from '@/lib/approvalNotifications'
 import { getErrorMessage } from '@/lib/errors'
@@ -1321,6 +1322,7 @@ export function PeoplePage() {
                 </div>
               </section>
             )}
+            {canManage && activeProjectId && <FileAccessPanel projectId={activeProjectId} />}
           </>
         )}
       </div>

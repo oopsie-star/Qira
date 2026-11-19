@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Code2, Download, ExternalLink, Eye, Loader2, X } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
-import { displayFilename, officeViewerUrl, previewKind, taskIdFromPath } from '@/lib/attachments'
+import { displayFilename, previewKind, taskIdFromPath } from '@/lib/attachments'
 import { MarkdownRenderer } from '@/lib/markdown'
 import { useStore } from '@/store'
 
@@ -158,8 +158,6 @@ export function AttachmentPreview({ path, signedUrl, onClose }: AttachmentPrevie
             </div>
           ) : kind === 'pdf' ? (
             <iframe src={signedUrl} title={filename} className="h-full w-full border-0" />
-          ) : kind === 'office' ? (
-            <iframe src={officeViewerUrl(signedUrl)} title={filename} className="h-full w-full border-0" />
           ) : kind === 'video' ? (
             <div className="flex h-full items-center justify-center p-4">
               <video src={signedUrl} controls className="max-h-full max-w-full rounded-lg" />

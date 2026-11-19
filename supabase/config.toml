@@ -17,3 +17,8 @@ verify_jwt = false
 # function code ever runs.
 [functions.mcp-server]
 verify_jwt = false
+
+# The file gateway authenticates itself (session token for tickets, the
+# ticket or share token for reads): <img>/<video> cannot send a JWT.
+[functions.files]
+verify_jwt = false

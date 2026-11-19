@@ -140,6 +140,15 @@ Deno.test('delete_attachment: needs a reason, files a request, and deletes the f
   assertEquals(db.tables.tasks[0].attachments, [])
 })
 
+Deno.test('delete_attachment: a file storage no longer had is reported as not removed, not counted', async () => {
+  const db = fixture()
+  await deleteAttachment(db as never, { path: FILE, reason: 'contains personal data', agent_name: 'claude' })
+  approve(db, 1)
+  db.files.delete(`attachments/${FILE}`)
+  const done = await deleteAttachment(db as never, { path: FILE, request_id: 1, agent_name: 'claude' }) as Record<string, unknown>
+  assertEquals(done.storage, { removed: 0, failed: [FILE] })
+})
+
 // ── purge_task / purge_trash ──────────────────────────────────────────────────
 
 Deno.test('purge_task: refuses a live task, and a trashed task with a live subtask', async () => {

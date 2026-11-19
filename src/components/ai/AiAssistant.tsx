@@ -11,10 +11,9 @@ import {
   resolveAssignee,
 } from '@/lib/agentTools'
 import type { FillTaskResult, SplitTasksResult } from '@/lib/agentTools'
-import { storageBucket } from '@/lib/attachments'
+import { fetchFile } from '@/lib/fileGateway'
 import { useI18n } from '@/lib/i18n'
 import { canUseAiManagementTools } from '@/lib/permissions'
-import { supabase } from '@/lib/supabase'
 import { useStore } from '@/store'
 import type { LLMMessage } from '@/lib/ai'
 
@@ -74,9 +73,8 @@ export function AiAssistant({ projectName }: AiAssistantProps) {
   /** Backs read_product_vision — downloads a canon attachment (.md) as text. Returns null on any failure so the tool degrades gracefully instead of throwing mid-conversation. */
   async function downloadAttachmentText(path: string): Promise<string | null> {
     try {
-      const { data, error } = await supabase.storage.from(storageBucket(path)).download(path)
-      if (error || !data) return null
-      return await data.text()
+      const file = await fetchFile(path)
+      return file ? await file.text() : null
     } catch {
       return null
     }

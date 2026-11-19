@@ -87,6 +87,21 @@ npx supabase secrets set --env-file <path-to-temp-env-file>
 ```
 Generate values with `openssl rand -hex 32`; never echo secret values into chat, and delete any temp file holding one immediately after use.
 
+## 4a. File gateway (`supabase/functions/files`)
+
+Every file a client reads goes through the `files` edge function; the decision is `public.file_gate()` (migration `20261119000000_file_gateway.sql`), checked at **every** request, and logged in `file_access_log`. Clients get no storage signed URLs and cannot read storage directly (`20261119010000_storage_direct_reads_closed.sql`). Never add `createSignedUrl` / `download` / `remove` on the client — use `src/lib/fileGateway.ts`.
+
+- **Tickets** (app `<img>/<video>` src): HMAC-signed with `FILES_TICKET_SECRET`, bound to user + file + channel `app` + purpose (`view` | `archive`), valid 1 hour. A ticket grants nothing by itself — each request re-checks membership and that the file is live; a leaked ticket opens only that one file, and every use shows IP and browser in the log.
+- **Share links**: rows in `file_share_links` (only a SHA-256 of the token is stored), 7 days, revoked by trigger when the file stops being live, revocable by owners (People page → "File access").
+- **MCP** `read_attachment` calls the same `file_gate` (channel `mcp`); archived files are not readable through MCP.
+
+**Rotating `FILES_TICKET_SECRET`** (e.g. a ticket leaked, or routine): all issued tickets stop working at once; open tabs fetch new ones on the next render (images that were already loaded stay on screen; a video mid-play needs reopening). Share links are NOT affected (they are database rows; revoke them in the app or with `revoke_file_share_link`).
+```bash
+umask 077; f=$(mktemp); echo "FILES_TICKET_SECRET=$(openssl rand -hex 32)" > "$f"
+npx supabase secrets set --env-file "$f" --project-ref ityvlpfupodfgdgecsun; rm -f "$f"
+```
+No redeploy needed — edge functions read secrets per worker start; to make it immediate, redeploy: `npx supabase functions deploy files`. If the secret is ever missing, the function refuses everything (404), it never falls back.
+
 ## 5. Git hygiene in this repo
 
 `git status` will show a long list of pre-existing untracked/uncommitted files (other in-progress work, `supabase/.temp/*` CLI cache, etc.) that predate whatever you're working on. **Never `git add -A` or `git add .`** — always `git add` the specific files your change touched, so unrelated pending work stays untouched and out of your commit.

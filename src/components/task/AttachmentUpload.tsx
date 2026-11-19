@@ -1,11 +1,12 @@
 ﻿import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
-import { Archive, ChevronDown, ChevronRight, FileText, Loader2, Mic, Music, RotateCcw, Square, Upload, X } from 'lucide-react'
+import { Archive, ChevronDown, ChevronRight, Eye, FileText, Loader2, Mic, Music, RotateCcw, Square, Upload, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { setAttachmentArchived } from '@/lib/attachmentArchive'
 import { checkAppVersion, useAppIsStale } from '@/lib/appVersion'
 import { getErrorMessage } from '@/lib/errors'
 import { useI18n } from '@/lib/i18n'
-import { displayFilename, isImage, previewKind, safeFilename, storageBucket } from '@/lib/attachments'
+import { displayFilename, isImage, previewKind, safeFilename } from '@/lib/attachments'
+import { fileUrl, fileUrls, removeStoredFiles } from '@/lib/fileGateway'
 import { useStore } from '@/store'
 import { AttachmentPreview } from './AttachmentPreview'
 
@@ -72,6 +73,8 @@ export function AttachmentUpload({
   const [error, setError] = useState<string | null>(null)
   const [signedAttachments, setSignedAttachments] = useState<SignedAttachment[]>([])
   const [previewPath, setPreviewPath] = useState<string | null>(null)
+  // An archived file opened from the archive list, to decide whether to restore it.
+  const [archivedPreview, setArchivedPreview] = useState<{ path: string; url: string | null } | null>(null)
   const [recording, setRecording] = useState(false)
   const [recordSeconds, setRecordSeconds] = useState(0)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -87,18 +90,11 @@ export function AttachmentUpload({
         return
       }
 
-      const results = await Promise.all(
-        attachments.map(async (path) => {
-          const { data } = await supabase.storage
-            .from(storageBucket(path))
-            .createSignedUrl(path, 3600)
-
-          return { path, signedUrl: data?.signedUrl ?? null }
-        })
-      )
+      // Through the file gateway: checked at every request, no signed URLs.
+      const urls = await fileUrls(attachments).catch(() => new Map<string, string>())
 
       if (active) {
-        setSignedAttachments(results)
+        setSignedAttachments(attachments.map((path) => ({ path, signedUrl: urls.get(path) ?? null })))
       }
     }
 
@@ -225,9 +221,10 @@ export function AttachmentUpload({
       return
     }
 
-    await supabase.storage.from(storageBucket(path)).remove([path])
-    if (attachmentNotes[path]) void updateAttachmentNote(path, '')
+    // Detach first: the file gateway removes only what nothing references.
     await onAttachmentsChange(attachments.filter((item) => item !== path))
+    if (attachmentNotes[path]) void updateAttachmentNote(path, '')
+    await removeStoredFiles([path]).catch(() => undefined)
   }
 
   return (
@@ -382,6 +379,18 @@ export function AttachmentUpload({
                   </span>
                   <button
                     type="button"
+                    onClick={async () => {
+                      setError(null)
+                      const url = await fileUrl(path, 'archive').catch(() => null)
+                      setArchivedPreview({ path, url })
+                    }}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-slate-600 transition hover:bg-surface-card"
+                  >
+                    <Eye size={12} />
+                    {t('attachments.open')}
+                  </button>
+                  <button
+                    type="button"
                     disabled={stale || archiveBusy === path}
                     onClick={async () => {
                       if (!(await ensureCurrent())) return
@@ -458,6 +467,14 @@ export function AttachmentUpload({
         className="hidden"
         onChange={handleFileInput}
       />
+
+      {archivedPreview && (
+        <AttachmentPreview
+          path={archivedPreview.path}
+          signedUrl={archivedPreview.url}
+          onClose={() => setArchivedPreview(null)}
+        />
+      )}
 
       {previewPath && (
         <AttachmentPreview

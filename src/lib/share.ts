@@ -1,8 +1,6 @@
-import { supabase } from '@/lib/supabase'
-import { getFilename, storageBucket } from '@/lib/attachments'
+import { getFilename } from '@/lib/attachments'
+import { createShareLinks } from '@/lib/fileGateway'
 
-// Attachment links shared into a chat must outlive the default 1h preview URLs.
-const SHARE_EXPIRY_SECONDS = 60 * 60 * 24 * 7 // 7 days
 // Messenger deep links are GET requests — long signed attachment URLs blow past
 // the server's URI limit (Telegram/nginx returns 400). Keep the messenger text
 // compact; the full links go to the clipboard instead.
@@ -22,19 +20,17 @@ export function buildEpicShareUrl(projectKey: string, epicId: string): string {
   return `${window.location.origin}${base}/projects/${encodeURIComponent(projectKey)}/backlog?epicFilter=${epicId}`
 }
 
-/** Long-lived signed URLs (name + url) for a task's attachment storage paths. */
+/**
+ * Share links (name + url) for a task's live attachments: 7 days, recorded in
+ * the database, revoked at once when the file is archived or removed, and
+ * revocable by the project's owners. Served by the file gateway.
+ */
 export async function signedAttachmentLinks(
   paths: string[],
   nameFor: (path: string) => string = getFilename,
 ): Promise<{ name: string; url: string }[]> {
-  if (!paths.length) return []
-  const results = await Promise.all(
-    paths.map(async (path) => {
-      const { data } = await supabase.storage.from(storageBucket(path)).createSignedUrl(path, SHARE_EXPIRY_SECONDS)
-      return data?.signedUrl ? { name: nameFor(path), url: data.signedUrl } : null
-    }),
-  )
-  return results.filter((entry): entry is { name: string; url: string } => Boolean(entry))
+  const links = await createShareLinks(paths)
+  return links.map((link) => ({ name: nameFor(link.path), url: link.url }))
 }
 
 /** Title + (clipped) description — the message body without attachments/link. */

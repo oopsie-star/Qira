@@ -80,6 +80,16 @@ const checks: Check[] = [
   ['Task drawer', 'edit policy (rpc)', () => supabase.rpc('task_edit_policy', { p_task: ID }), '42501'],
   ['Task drawer', 'new revision (rpc)', () =>
     supabase.rpc('create_task_revision', { p_task: ID, p_title: null, p_description: null, p_attachments: [], p_comment_ids: [], p_reason: 'smoke' }), '42501'],
+  // File gateway: the owners' panel reads these (anon: no grant at all), the
+  // gate is for the server only, links are made by signed-in members.
+  ['Files', 'share links (owners)', () =>
+    supabase.from('file_share_links').select('id, path, created_by, created_at, expires_at, revoked_at, revoke_reason, use_count, last_used_at').eq('project_id', ID), '42501'],
+  ['Files', 'access log (owners)', () =>
+    supabase.from('file_access_log').select('id, at, path, channel, purpose, actor_id, actor_agent, outcome, reason').eq('project_id', ID), '42501'],
+  ['Files', 'gate (rpc, server only)', () =>
+    supabase.rpc('file_gate', { p_path: 'x', p_channel: 'app', p_purpose: 'view', p_actor: null, p_agent: null, p_share_token: null, p_range: null, p_ip: null, p_user_agent: null }), '42501'],
+  ['Files', 'share (rpc)', () => supabase.rpc('create_file_share_links', { p_paths: [] }), '42501'],
+  ['Files', 'revoke share (rpc)', () => supabase.rpc('revoke_file_share_link', { p_link: ID }), '42501'],
 ]
 
 let failed = 0
@@ -158,13 +168,69 @@ async function signedInChecks() {
     report(!notesError && paths.length > 0 && named.length === paths.length, 'Task drawer', 'attachments with names',
       notesError?.message ?? `${paths.length} attached, ${named.length} named`)
 
-    for (const path of paths.slice(0, 3)) {
-      const { data: signed, error: signError } = await user.storage.from('attachments').createSignedUrl(path, 60)
-      const status = signed?.signedUrl ? (await fetch(signed.signedUrl)).status : 0
-      report(!signError && status === 200, 'Task drawer', 'attachment downloads', signError?.message ?? `HTTP ${status}`)
-    }
+    await fileGatewayChecks(user, auth.session!.access_token, paths[0], project.id as string)
   } finally {
     await user.auth.signOut()
+  }
+}
+
+// ── The file gateway (supabase/functions/files) ──────────────────────────────
+//
+// Opening a file the way the drawer does: a ticket, then the file — with no
+// caching anywhere. A share link works, and stops the moment it is revoked.
+// A file of another project is a plain 404. And the old door is shut: the
+// account cannot sign a storage URL itself (SMOKE_STORAGE_OPEN=1 only for the
+// one run between 20261119000000 and 20261119010000).
+async function fileGatewayChecks(user: ReturnType<typeof createClient>, jwt: string, path: string | undefined, projectId: string) {
+  if (!path) {
+    report(false, 'Files', 'fixture file', 'the fixture task has no attachment')
+    return
+  }
+  const FILES = `${url}/functions/v1/files`
+  const cacheOk = (r: Response) =>
+    r.headers.get('cache-control') === 'no-store, private' && r.headers.get('x-content-type-options') === 'nosniff' && r.headers.get('cf-cache-status') !== 'HIT'
+  const headersOf = (r: Response) => `cc=${r.headers.get('cache-control')} nosniff=${r.headers.get('x-content-type-options')} cf=${r.headers.get('cf-cache-status')}`
+
+  const t = await fetch(`${FILES}/tickets`, { method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ paths: [path] }) })
+  const ticketUrl = t.ok ? ((await t.json()) as { urls: Record<string, string> }).urls[path] : undefined
+  report(Boolean(ticketUrl), 'Files', 'ticket', ticketUrl ? 'issued' : `HTTP ${t.status}`)
+  if (!ticketUrl) return
+
+  const first = await fetch(ticketUrl)
+  const body = await first.text()
+  report(first.status === 200 && body.length > 0, 'Task drawer', 'attachment opens', `HTTP ${first.status}, ${body.length} bytes`)
+  const second = await fetch(ticketUrl)
+  await second.text()
+  report(cacheOk(first) && cacheOk(second), 'Files', 'no cache (twice)', headersOf(second))
+
+  const ranged = await fetch(ticketUrl, { headers: { Range: 'bytes=0-3' } })
+  const part = await ranged.arrayBuffer()
+  report(ranged.status === 206 && part.byteLength === 4, 'Files', 'range request', `HTTP ${ranged.status}, ${part.byteLength} bytes, ${ranged.headers.get('content-range')}`)
+
+  const foreign = '00000000-0000-4000-8000-000000000000/00000000-0000-4000-8000-000000000001/00000000-0000-4000-8000-000000000002/1-x.txt'
+  const ft = await fetch(`${FILES}/tickets`, { method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ paths: [foreign] }) })
+  const fUrl = ((await ft.json()) as { urls?: Record<string, string> }).urls?.[foreign]
+  const fRes = fUrl ? await fetch(fUrl) : null
+  const fBody = fRes ? await fRes.text() : ''
+  report(fRes?.status === 404 && fBody === 'Not found', 'Files', 'foreign file is 404', `HTTP ${fRes?.status}`)
+
+  const { data: links, error: linkError } = await user.rpc('create_file_share_links', { p_paths: [path] })
+  const token = (links as { token: string }[] | null)?.[0]?.token
+  const shareUrl = token ? `${FILES}/s/${token}` : ''
+  const s1 = token ? await fetch(shareUrl) : null
+  if (s1) await s1.text()
+  report(s1?.status === 200 && cacheOk(s1), 'Files', 'share link opens', linkError?.message ?? `HTTP ${s1?.status} ${s1 ? headersOf(s1) : ''}`)
+  const { data: row } = await user.from('file_share_links').select('id').eq('project_id', projectId).order('created_at', { ascending: false }).limit(1)
+  const { error: revokeError } = await user.rpc('revoke_file_share_link', { p_link: row?.[0]?.id })
+  const s2 = token ? await fetch(shareUrl) : null
+  if (s2) await s2.text()
+  report(!revokeError && s2?.status === 404, 'Files', 'revoked link is 404', revokeError?.message ?? `HTTP ${s2?.status}`)
+
+  const { data: direct, error: directError } = await user.storage.from('attachments').createSignedUrl(path, 60)
+  if (env.SMOKE_STORAGE_OPEN === '1' || process.env.SMOKE_STORAGE_OPEN === '1') {
+    report(true, 'Files', 'direct storage signing', direct ? 'still open (expected until 20261119010000)' : `closed: ${directError?.message}`)
+  } else {
+    report(!direct, 'Files', 'direct storage signing', direct ? 'STILL OPEN: storage signed a URL for a client' : `refused (${directError?.message})`)
   }
 }
 

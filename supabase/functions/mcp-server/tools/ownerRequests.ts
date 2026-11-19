@@ -136,6 +136,7 @@ async function audit(admin: SupabaseClient, row: Record<string, unknown>) {
 /** Removes storage objects after the database let go of them; reports what it could not. */
 async function removeFiles(admin: SupabaseClient, paths: string[]) {
   const failed: string[] = []
+  let removed = 0
   const byBucket = new Map<string, string[]>()
   for (const path of paths) {
     const bucket = storageBucket(path)
@@ -144,11 +145,18 @@ async function removeFiles(admin: SupabaseClient, paths: string[]) {
   for (const [bucket, list] of byBucket) {
     for (let i = 0; i < list.length; i += 100) {
       const chunk = list.slice(i, i + 100)
-      const { error } = await admin.storage.from(bucket).remove(chunk)
-      if (error) failed.push(...chunk)
+      // Count what storage says it removed: a path it did not find is not
+      // an error there, but it was not removed either.
+      const { data, error } = await admin.storage.from(bucket).remove(chunk)
+      if (error) {
+        failed.push(...chunk)
+        continue
+      }
+      const gone = new Set((data ?? []).map((o: { name: string }) => o.name))
+      for (const p of chunk) gone.has(p) ? removed++ : failed.push(p)
     }
   }
-  return { removed: paths.length - failed.length, failed }
+  return { removed, failed }
 }
 
 // ── delete_attachment ────────────────────────────────────────────────────────

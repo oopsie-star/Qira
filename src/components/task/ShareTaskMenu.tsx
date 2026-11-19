@@ -16,7 +16,6 @@ export function ShareTaskMenu({ task, projectKey }: { task: Task; projectKey: st
   const { t } = useI18n()
   const ref = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
-  const [clipboardBlock, setClipboardBlock] = useState('')
   const [copied, setCopied] = useState(false)
 
   const attachmentNotes = useStore((state) => state.attachmentNotes)
@@ -32,8 +31,6 @@ export function ShareTaskMenu({ task, projectKey }: { task: Task; projectKey: st
     t('share.attachments'),
   )
 
-  // Clipboard has no length limit — include full signed attachment links.
-  const clipboardBody = taskShareBase(task.key, task.title, task.description, 1000) + clipboardBlock
 
   useEffect(() => {
     function handleMouseDown(event: MouseEvent) {
@@ -43,25 +40,18 @@ export function ShareTaskMenu({ task, projectKey }: { task: Task; projectKey: st
     return () => document.removeEventListener('mousedown', handleMouseDown)
   }, [])
 
-  // Resolve signed attachment links when the menu opens (for the clipboard copy),
-  // so the copy handler stays synchronous.
-  useEffect(() => {
-    if (!open || task.attachments.length === 0) return
-    let active = true
-    void signedAttachmentLinks(task.attachments, nameForAttachment).then((links) => {
-      if (active) setClipboardBlock(withAttachments('', links, t('share.attachments')))
-    })
-    return () => { active = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, task.attachments, t])
 
   function openTarget(target: ShareTarget) {
     window.open(shareHref(target, messengerBody, taskUrl), '_blank', 'noopener,noreferrer')
     setOpen(false)
   }
 
+  // Share links are records (7 days, revocable), so they are made only when
+  // the person actually copies them, not each time the menu opens.
   async function copyAll() {
     try {
+      const links = task.attachments.length ? await signedAttachmentLinks(task.attachments, nameForAttachment) : []
+      const clipboardBody = taskShareBase(task.key, task.title, task.description, 1000) + withAttachments('', links, t('share.attachments'))
       await navigator.clipboard.writeText(`${clipboardBody}\n\n${taskUrl}`)
       setCopied(true)
       setTimeout(() => setCopied(false), 1600)

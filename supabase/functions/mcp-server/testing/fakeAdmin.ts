@@ -200,9 +200,10 @@ export class FakeAdmin {
           const names = [...this.files.keys()].filter((k) => k.startsWith(base)).map((k) => k.slice(base.length)).filter((n) => !n.includes('/'))
           return Promise.resolve({ data: names.map((name) => ({ name })), error: null })
         },
+        // As storage answers: the objects it removed; a missing path is not an error.
         remove: (paths: string[]) => {
-          for (const p of paths) this.files.delete(`${bucket}/${p}`)
-          return Promise.resolve({ data: null, error: null })
+          const removed = paths.filter((p) => this.files.delete(`${bucket}/${p}`))
+          return Promise.resolve({ data: removed.map((name) => ({ name })), error: null })
         },
       }),
     }

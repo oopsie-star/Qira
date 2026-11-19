@@ -6,6 +6,7 @@ import { dedupeRecipients } from '@/lib/notify'
 import { workTransitionFor } from '@/lib/workStart'
 import { computeWeeklyDigest, isSameLocalDay, type WeeklyDigestStats } from '@/lib/weeklyDigest'
 import { supabase } from '@/lib/supabase'
+import { removeStoredFiles } from '@/lib/fileGateway'
 import { EPIC_COLORS } from '@/types'
 import type {
   ActivityEvent,
@@ -2985,8 +2986,8 @@ export const useStore = create<AppState>((set, get) => {
 
       for (const batch of chunkItems(attachmentPaths, 100)) {
         if (!batch.length) continue
-        const { error: storageError } = await supabase.storage.from('attachments').remove(batch)
-        if (storageError) throw storageError
+        // The project is gone, so nothing references these: the file gateway removes them.
+        await removeStoredFiles(batch)
       }
 
       const activeProjectId = get().activeProjectId
