@@ -105,7 +105,8 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
   },
   {
     name: 'create_task',
-    description: 'Create a new task in a project.',
+    description:
+      'Create a new task in a project. Requirements go in the description, not in comments. AFTER CREATING: if the response has a non-empty possible_duplicates, do not carry on silently — show them to your human and settle each with resolve_duplicate (not_duplicate / duplicate / new_version). To make a new version of an existing task, never create a copy here — use create_task_revision.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -161,7 +162,7 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
   {
     name: 'update_task',
     description:
-      `Update a task's title, description, priority, due date, assignee, epic, sprint, or labels. For status changes, use update_task_status instead. Title and description follow the edit policy: once the assignee has started the work (or the task is done), an agent's edit is not applied — the server files an owner request and answers with its number ("awaiting_owner_approval"). Tell your human; once an owner approves it in Qira, repeat the same call with request_id. The other option is create_task_revision. Nothing is applied while a request is open. The response carries edit_mode.${CROSS_AGENT_NOTE}`,
+      `BEFORE EDITING the title or description, call get_edit_policy. Update a task's title, description, priority, due date, assignee, epic, sprint, or labels. For status changes, use update_task_status instead. If the title changes and the response has a non-empty possible_duplicates, settle it with resolve_duplicate. Title and description follow the edit policy: once the assignee has started the work (or the task is done), an agent's edit is not applied — the server files an owner request and answers with its number ("awaiting_owner_approval"). Tell your human; once an owner approves it in Qira, repeat the same call with request_id. The other option is create_task_revision — never a copy made with create_task. Nothing is applied while a request is open. The response carries edit_mode.${CROSS_AGENT_NOTE}`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -197,7 +198,7 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
   {
     name: 'create_task_revision',
     description:
-      `The only way to make a new revision of a task — explicitly, when its text must change after the assignee started. Creates a new To do task with the new title/description and the old task's fields, moves the files and comments you choose and every open subtask to it (closed subtasks stay with the old task as history), links it as superseding the old one, archives the old one, and notifies the assignee with your reason. Use it only after your human agreed to a new revision.${CROSS_AGENT_NOTE}`,
+      `The only way to make a new revision of a task — never create a copy with create_task. Call get_edit_policy first: if edit_mode is in_place, just edit with update_task. Use this explicitly, when its text must change after the assignee started. Creates a new To do task with the new title/description and the old task's fields, moves the files and comments you choose and every open subtask to it (closed subtasks stay with the old task as history), links it as superseding the old one, archives the old one, and notifies the assignee with your reason. Use it only after your human agreed to a new revision.${CROSS_AGENT_NOTE}`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -235,7 +236,7 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
   {
     name: 'restore_description_version',
     description:
-      `Bring back an earlier version of a task's title and description (from list_description_versions). It is an edit like any other: the edit policy applies, and it becomes a new version.${CROSS_AGENT_NOTE}`,
+      `Bring back an earlier version of a task's title and description (from list_description_versions). It is an edit like any other — call get_edit_policy first; the edit policy applies, and it becomes a new version.${CROSS_AGENT_NOTE}`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -496,7 +497,7 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
   {
     name: 'rename_attachment',
     description:
-      `Rename an attachment (works for task, epic, or sprint attachments alike — pass the path from get_task/get_project's attachments list). Renaming is for fixing a name — to retire an old version use archive_attachment or replace_attachment, never an "УСТАРЕЛО" prefix.${CROSS_AGENT_NOTE}`,
+      `Rename an attachment (works for task, epic, or sprint attachments alike — pass the path from get_task/get_project's attachments list). Renaming is for fixing a name. To retire an old version use archive_attachment (or replace_attachment to publish its successor) — a name starting with "УСТАРЕЛО", "OUTDATED" or "OLD" is refused.${CROSS_AGENT_NOTE}`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -510,7 +511,7 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
   },
   {
     name: 'add_comment',
-    description: `Add a comment to a task.${CROSS_AGENT_NOTE}`,
+    description: `Add a comment to a task — for discussion. Requirements belong in the description: if what you want to say changes what must be built, update the description (update_task, after get_edit_policy) instead.${CROSS_AGENT_NOTE}`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -525,7 +526,7 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
   {
     name: 'archive_comment',
     description:
-      `Move a comment out of the task's working area into its archive — kept, and restorable with restore_comment. Use it for comments that are outdated, resolved, or whose content you have moved into the description (then pass folded_into_description: true). Nothing is deleted. Safe to repeat.${CROSS_AGENT_NOTE}`,
+      `Move a comment out of the task's working area into its archive — kept, and restorable with restore_comment. Use it for comments that are outdated, resolved, or whose content you have moved into the description. RULE: when a comment holds a requirement, first move it into the description (update_task), then archive the comment with folded_into_description: true. Nothing is deleted. Safe to repeat.${CROSS_AGENT_NOTE}`,
     inputSchema: {
       type: 'object',
       properties: {

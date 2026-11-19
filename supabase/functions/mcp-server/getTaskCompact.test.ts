@@ -28,7 +28,7 @@ function fixture(comments = 3) {
     task_activities: Array.from({ length: 25 }, (_, i) => ({ id: `a${i}`, task_id: T, actor_id: 'u', activity_type: 'task_updated', message: `m${i}`, created_at: `2026-11-02T00:${String(i).padStart(2, '0')}:00Z` })),
     task_field_changes: [
       { id: 'f1', task_id: T, field_name: 'description', old_value: 'a'.repeat(5000), new_value: 'b'.repeat(6000), changed_by: 'u', changed_at: '2026-11-03T00:00:00Z' },
-      { id: 'f2', task_id: T, field_name: 'status', old_value: 'todo', new_value: 'in_progress', changed_by: 'u', changed_at: '2026-11-03T00:01:00Z' },
+      { id: 'f2', task_id: T, field_name: 'title', old_value: 'T', new_value: 'Short title', changed_by: 'u', changed_at: '2026-11-03T00:01:00Z' },
     ],
     attachment_notes: [], agent_audit_log: [], task_links: [],
   })
@@ -52,10 +52,10 @@ Deno.test('history: newest first, paged without overlap; the last page has no cu
   assertEquals(h1.some((a) => h2.some((b) => JSON.stringify(a) === JSON.stringify(b))), false)
 })
 
-Deno.test('history: a description change is lengths only; a status change is shown in full', async () => {
+Deno.test('history: a description change is lengths only; a short title change is shown in full', async () => {
   const out = await getTask(fixture() as never, { task: 'P-1', include: ['history'], history_limit: 2 }) as Record<string, unknown>
-  const [status, desc] = out.history as Record<string, unknown>[]
-  assertEquals([status.field, status.old_value, status.new_value], ['status', 'todo', 'in_progress'])
+  const [title, desc] = out.history as Record<string, unknown>[]
+  assertEquals([title.field, title.old_value, title.new_value], ['title', 'T', 'Short title'])
   assertEquals([desc.field, desc.old_length, desc.new_length, desc.full_text, 'old_value' in desc], ['description', 5000, 6000, 'list_description_versions', false])
 })
 

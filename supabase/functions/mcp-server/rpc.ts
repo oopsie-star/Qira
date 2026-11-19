@@ -51,7 +51,12 @@ export async function handleRequest(admin: SupabaseClient, body: unknown): Promi
       capabilities: { tools: {} },
       serverInfo: SERVER_INFO,
       instructions:
-        'Qira tracks multiple projects. Before creating or modifying anything, confirm with the human operator which project (key) you are acting in — call list_projects if you are not sure what projects exist. Do not silently guess a project.',
+        'Qira tracks multiple projects. Before creating or modifying anything, confirm with the human operator which project (key) you are acting in — call list_projects if you are not sure what projects exist. Do not silently guess a project.\n' +
+        'Working on a task: 1) get_task; if comments_truncated.omitted > 0, read all comments (include: ["all_comments"]) before editing. ' +
+        '2) Before editing the title or description, call get_edit_policy: in_place → update_task; otherwise follow its answer (owner request, or create_task_revision once your human agrees). Never make a new version by copying with create_task. ' +
+        '3) Requirements live in the description, not in comments; after moving a comment\'s content there, archive_comment with folded_into_description: true. ' +
+        '4) Old files: archive_attachment or replace_attachment — never rename them "УСТАРЕЛО"/"OUTDATED"/"OLD". ' +
+        '5) After create_task (or a title change) check possible_duplicates in the response and settle them with resolve_duplicate.',
     })
   }
 

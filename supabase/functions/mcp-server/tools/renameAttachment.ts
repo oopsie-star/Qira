@@ -12,12 +12,26 @@ interface RenameAttachmentArgs {
   confirmed_cross_agent?: boolean
 }
 
+// A name that retires a file instead of archiving it: "УСТАРЕЛО …", "[outdated] …",
+// "  Old_v1.pdf" — any case, after leading spaces, brackets or punctuation. The
+// word must end there ("Oldenburg.pdf" is a name, not a marker).
+const RETIREMENT_PREFIX = /^[\s\p{P}\p{S}]*(устарело|out[\s_-]*dated|old)(?!\p{L})/iu
+export function isRetirementName(name: string): boolean {
+  return RETIREMENT_PREFIX.test(name.normalize('NFKC'))
+}
+
 export async function renameAttachment(admin: SupabaseClient, args: RenameAttachmentArgs) {
   const path = args.path?.trim()
   const newName = args.new_name?.trim()
   const agentName = resolveAgentName(args)
   if (!path) throw new ToolError('"path" is required — use the path from get_task/get_project\'s attachments list.')
   if (!newName) throw new ToolError('"new_name" is required.')
+  if (isRetirementName(newName)) {
+    throw new ToolError(
+      `"${newName}" marks the file as outdated by its name — that is not allowed. To retire this file use archive_attachment (it stays restorable), ` +
+        'or replace_attachment to upload its new version and archive this one in one step. Rename only to fix a name.',
+    )
+  }
 
   const projectId = projectIdFromPath(path)
   if (!projectId) throw new ToolError(`"${path}" doesn't look like a valid attachment path.`)
