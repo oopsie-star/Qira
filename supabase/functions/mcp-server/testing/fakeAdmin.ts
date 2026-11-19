@@ -142,6 +142,26 @@ class FakeInsert implements PromiseLike<{ data: null; error: null }> {
       return { data: null, error: null as null }
     }).then(onfulfilled, onrejected)
   }
+
+  /** insert(...).select(...).single(): the row back, with an id and a key if the table needs them. */
+  select(_columns?: string) {
+    const run = () => {
+      const rows = this.rows.map((row, i) => {
+        const list = (this.db.tables[this.table] ??= [])
+        const filled: Row = { id: row.id ?? crypto.randomUUID(), ...row }
+        if (this.table === 'tasks' && !filled.key) filled.key = `P-${list.length + 100 + i}`
+        if (this.table === 'tasks' && !filled.status) filled.status = 'todo'
+        list.push(filled)
+        this.db.inserted.push({ table: this.table, row: filled })
+        return filled
+      })
+      return rows
+    }
+    return {
+      single: () => Promise.resolve({ data: run()[0], error: null }),
+      then: <T1>(f: (v: { data: Row[]; error: null }) => T1) => Promise.resolve({ data: run(), error: null }).then(f),
+    }
+  }
 }
 
 type RpcHandler = (params: Row, db: FakeAdmin) => { data: unknown; error: { message: string } | null }
@@ -351,6 +371,11 @@ export function installOwnerRequestFakes(db: FakeAdmin) {
         }
       }
       result = { paths: [path] }
+    } else if (r.request_type === 'resolve_duplicate') {
+      // As apply_owner_request: hand the approved params to resolve_duplicate.
+      const p = r.params as Row
+      const out = db.rpcHandlers.resolve_duplicate!({ p_keep: p.keep, p_other: p.other, p_action: p.action, p_comment_ids: p.comment_ids, p_confirm_data_loss: p.confirm_data_loss, p_approved: true }, db) as { data: Row }
+      result = out.data
     } else {
       const ids = (r.params as Row).task_ids as string[]
       const gone = db.tables.tasks.filter((t) => ids.includes(t.id as string) || ids.includes(t.parent_task_id as string))

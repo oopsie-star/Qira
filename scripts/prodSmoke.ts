@@ -90,6 +90,11 @@ const checks: Check[] = [
     supabase.rpc('file_gate', { p_path: 'x', p_channel: 'app', p_purpose: 'view', p_actor: null, p_agent: null, p_share_token: null, p_range: null, p_ip: null, p_user_agent: null }), '42501'],
   ['Files', 'share (rpc)', () => supabase.rpc('create_file_share_links', { p_paths: [] }), '42501'],
   ['Files', 'revoke share (rpc)', () => supabase.rpc('revoke_file_share_link', { p_link: ID }), '42501'],
+  // Stage 5: duplicates — the bar/list, the drawer block, resolving.
+  ['Duplicates', 'list (rpc)', () => supabase.rpc('list_possible_duplicates', { p_project: ID }), '42501'],
+  ['Duplicates', 'find (rpc)', () => supabase.rpc('find_possible_duplicates', { p_project: ID, p_title: 'smoke', p_exclude: null, p_epic: null }), '42501'],
+  ['Duplicates', 'resolve (rpc)', () =>
+    supabase.rpc('resolve_duplicate', { p_keep: ID, p_other: ID, p_action: 'not_duplicate', p_comment_ids: [], p_confirm_data_loss: false, p_owner_confirmed: false }), '42501'],
 ]
 
 let failed = 0
@@ -169,6 +174,12 @@ async function signedInChecks() {
       notesError?.message ?? `${paths.length} attached, ${named.length} named`)
 
     await fileGatewayChecks(user, auth.session!.access_token, paths[0], project.id as string)
+
+    // Stage 5, as the bar and the drawer ask.
+    const { error: dupListError } = await user.rpc('list_possible_duplicates', { p_project: project.id })
+    report(!dupListError, 'Duplicates', 'list in TEST', dupListError?.message ?? 'accepted')
+    const { error: dupFindError } = await user.rpc('find_possible_duplicates', { p_project: project.id, p_title: FIXTURE_TITLE, p_exclude: taskId, p_epic: null })
+    report(!dupFindError, 'Duplicates', 'find for the fixture', dupFindError?.message ?? 'accepted')
   } finally {
     await user.auth.signOut()
   }

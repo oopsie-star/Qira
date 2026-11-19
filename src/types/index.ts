@@ -646,3 +646,50 @@ export interface JiraImportPreferences {
   skip_attachments_over_limit: boolean
   import_users: boolean
 }
+
+/** Stage 5: one possible-duplicate pair (list_possible_duplicates). */
+export interface DuplicatePair {
+  task_a: string
+  key_a: string
+  title_a: string
+  status_a: string
+  task_b: string
+  key_b: string
+  title_b: string
+  status_b: string
+  similarity: number
+  reason: string
+  same_epic: boolean
+}
+
+export type DuplicateAction = 'duplicate' | 'new_version' | 'not_duplicate'
+
+export interface ResolveDuplicateInput {
+  /** The task that stays. */
+  keepId: string
+  /** The task that goes to the archive (duplicate / the old version). */
+  otherId: string
+  action: DuplicateAction
+  commentIds?: string[]
+  confirmDataLoss?: boolean
+  ownerConfirmed?: boolean
+}
+
+export interface ResolveDuplicateAnswer {
+  action: DuplicateAction
+  done: boolean
+  keep?: string
+  other?: string
+  archived?: string
+  /** 'data': `other` still holds live files/comments/open subtasks; 'owner': it is in work, an owner confirms. */
+  needs_confirmation?: 'data' | 'owner'
+  other_holds?: { attachments: { path: string; name: string }[]; live_comments: number; open_subtasks: string[] }
+  suggestion?: 'new_version'
+  started_by?: string | null
+  started_at?: string | null
+  signal?: string | null
+  moved_attachments?: number
+  moved_attachment_paths?: string[]
+  moved_comments?: number
+  moved_subtasks?: string[]
+}

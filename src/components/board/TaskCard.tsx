@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Draggable } from '@hello-pangea/dnd'
+import { DuplicateBadge } from '@/components/common/Duplicates'
 import { Play, Calendar, ChevronDown, ChevronRight, CircleAlert, CornerDownRight, Flame, ListTree, Paperclip, Users } from 'lucide-react'
 import { StatusBadge } from '@/components/common/IssueBadges'
 import { AssigneeAvatars } from '@/components/common/AssigneeAvatars'
@@ -172,6 +173,7 @@ export function TaskCard({ task, index }: TaskCardProps) {
           <div className="mt-2.5 flex items-center gap-2">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500">
               <span className="font-semibold uppercase tracking-wide text-slate-400">{task.key}</span>
+              <DuplicateBadge taskId={task.id} />
               {universal && (
                 <Users size={13} className="shrink-0 text-slate-500" />
               )}

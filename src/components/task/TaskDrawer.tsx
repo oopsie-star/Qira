@@ -1,5 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { TaskDuplicatePanel } from '@/components/common/Duplicates'
 import { Archive, Calendar, ChevronDown, ChevronLeft, ChevronRight, Link2, MessageSquare, Paperclip, Play, Plus, Send, RotateCcw, ShieldAlert, Sparkles, Timer, Trash2, Wand2, X } from 'lucide-react'
 import { callLLM, getLLMConfig } from '@/lib/ai'
 import type { LLMMessage } from '@/lib/ai'
@@ -698,6 +699,8 @@ export function TaskDrawer() {
                 )}
               </p>
             )}
+
+            <TaskDuplicatePanel task={currentTask} />
 
             {ownerRequests.filter((request) => request.task_id === currentTask.id).map((request) => (
               <div key={request.id} className="mt-3">

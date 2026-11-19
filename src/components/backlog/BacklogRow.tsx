@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Draggable } from '@hello-pangea/dnd'
+import { DuplicateBadge } from '@/components/common/Duplicates'
 import { Play, AlertTriangle, BookOpenText, Calendar, CheckSquare, ChevronDown, ChevronRight, CircleAlert, Code2, FlaskConical, GripVertical, History, ListTree, MoreHorizontal, Music, Paperclip, Palette, RefreshCw, Server, Sparkles, Target } from 'lucide-react'
 import { PriorityBadge, StatusBadge } from '@/components/common/IssueBadges'
 import { AssigneeAvatars } from '@/components/common/AssigneeAvatars'
@@ -189,6 +190,7 @@ export function BacklogRow({ task, index, mobile = false, dragDisabled = false, 
                     <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                       {task.key}
                     </span>
+                    <DuplicateBadge taskId={task.id} />
                     <DisciplineBadges disciplines={disciplines} />
                     {!mobile && task.epic && (
                       <span

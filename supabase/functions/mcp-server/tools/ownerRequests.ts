@@ -11,7 +11,7 @@ import { resolveMcpAgentProfileId, resolveProjectByKey, resolveTaskByKeyOrId } f
 // happens — once. The database (apply_owner_request) checks everything; this
 // module only builds the request and reports back.
 
-export type OwnerRequestType = 'edit_in_place' | 'delete_attachment' | 'purge_task' | 'purge_trash'
+export type OwnerRequestType = 'edit_in_place' | 'delete_attachment' | 'purge_task' | 'purge_trash' | 'resolve_duplicate'
 
 export interface FileOrApply {
   type: OwnerRequestType
@@ -38,6 +38,7 @@ const TYPE_LABEL: Record<OwnerRequestType, string> = {
   delete_attachment: 'deleting a file for good',
   purge_task: 'deleting a task for good',
   purge_trash: 'emptying the trash',
+  resolve_duplicate: 'archiving a task in work as a duplicate',
 }
 
 export function parseRequestId(value: unknown): number | undefined {

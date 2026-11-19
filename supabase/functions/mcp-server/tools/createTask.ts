@@ -1,6 +1,7 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.8'
 
 import { resolveAgentName } from './agentGate.ts'
+import { possibleDuplicates, withDuplicates } from './duplicates.ts'
 import { ToolError } from './errors.ts'
 import {
   resolveEpicByKeyOrTitle,
@@ -133,5 +134,6 @@ export async function createTask(admin: SupabaseClient, args: CreateTaskArgs) {
   })
   if (auditError) console.error('[mcp-server] Failed to record agent_audit_log', auditError.message)
 
-  return data
+  // Stage 5: check the new task against live tasks of the project.
+  return withDuplicates(data, await possibleDuplicates(admin, project.id, data.title, data.id, epic?.id ?? null))
 }

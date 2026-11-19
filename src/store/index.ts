@@ -39,6 +39,9 @@ import type {
   TaskComment,
   TaskFieldChange,
   Task,
+  DuplicatePair,
+  ResolveDuplicateAnswer,
+  ResolveDuplicateInput,
   OwnerRequest,
   TaskLink,
   TaskLinkType,
@@ -529,6 +532,12 @@ interface AppState {
   /** Stage 4b: the active project's open owner requests (pending, or approved and not yet used). */
   ownerRequests: OwnerRequest[]
   fetchOwnerRequests: () => Promise<void>
+  /** Stage 5: unsettled possible-duplicate pairs of the active project, and the tasks in them. */
+  duplicatePairs: DuplicatePair[]
+  duplicateTaskIds: Set<string>
+  fetchDuplicatePairs: () => Promise<void>
+  /** Throws with the database's message; returns its answer (may ask to confirm first). */
+  resolveDuplicate: (input: ResolveDuplicateInput) => Promise<ResolveDuplicateAnswer>
   /** Throws with the database's message (not an owner, already decided, expired). */
   decideOwnerRequest: (id: number, approve: boolean, note?: string) => Promise<void>
   requestStatusChange: (taskId: string, toStatus: TaskStatus, apply: () => Promise<void> | void) => Promise<void>
@@ -782,6 +791,8 @@ export const useStore = create<AppState>((set, get) => {
     taskComments: [], archivedTaskComments: [],
     workTransition: null,
     ownerRequests: [],
+    duplicatePairs: [],
+    duplicateTaskIds: new Set<string>(),
     taskActivities: [],
     taskFieldChanges: [],
     tasks: [],
@@ -2473,6 +2484,36 @@ export const useStore = create<AppState>((set, get) => {
         telegramRecipientIds: allProjectMemberIdsExcept(profile.id),
       })
     }
+  },
+
+  fetchDuplicatePairs: async () => {
+    const projectId = get().activeProjectId
+    if (!projectId) {
+      set({ duplicatePairs: [], duplicateTaskIds: new Set() })
+      return
+    }
+    const { data, error } = await supabase.rpc('list_possible_duplicates', { p_project: projectId })
+    if (error || get().activeProjectId !== projectId) return
+    const pairs = (data ?? []) as DuplicatePair[]
+    set({ duplicatePairs: pairs, duplicateTaskIds: new Set(pairs.flatMap((p) => [p.task_a, p.task_b])) })
+  },
+
+  resolveDuplicate: async (input) => {
+    const { data, error } = await supabase.rpc('resolve_duplicate', {
+      p_keep: input.keepId,
+      p_other: input.otherId,
+      p_action: input.action,
+      p_comment_ids: input.commentIds ?? [],
+      p_confirm_data_loss: input.confirmDataLoss ?? false,
+      p_owner_confirmed: input.ownerConfirmed ?? false,
+    })
+    if (error) throw new Error(error.message)
+    const answer = data as ResolveDuplicateAnswer
+    if (answer.done) {
+      await Promise.all([get().refreshTask(input.keepId), get().refreshTask(input.otherId), get().fetchTaskLinks()])
+    }
+    await get().fetchDuplicatePairs()
+    return answer
   },
 
   refreshTask: async (taskId) => {

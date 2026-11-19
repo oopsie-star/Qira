@@ -301,6 +301,34 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
     },
   },
   {
+    name: 'list_possible_duplicates',
+    description:
+      'Possible duplicate pairs among the LIVE tasks of a project (archived and trashed tasks are never candidates). A pair counts when both titles start with the same code (e.g. MOM-CAL-ME-FE03), or, without a code, when the titles are nearly identical. Pairs already linked (supersedes/duplicates) or marked "not a duplicate" are left out. Settle each pair with resolve_duplicate.',
+    inputSchema: {
+      type: 'object',
+      properties: { project: { type: 'string', description: 'Project key, e.g. MOMNA.' } },
+      required: ['project'],
+    },
+  },
+  {
+    name: 'resolve_duplicate',
+    description:
+      'Settle a possible-duplicate pair. `keep` stays; `other` is the one that goes. Actions: "duplicate" — archive `other` and link it as a duplicate of `keep` (if `other` still has live files, live comments or open subtasks, nothing happens: the answer lists them and suggests "new_version"; repeat with confirm_data_loss: true only if your human confirms); "new_version" — exactly what create_task_revision does, into an existing task: `other`\'s live files and open subtasks move to `keep`, closed subtasks stay, comment_ids move too, `other` is archived, `keep` supersedes it; "not_duplicate" — keep both, the pair is not flagged again. If `other` is in work, archiving it needs an owner\'s approval: the first call files a request (nothing changes); repeat the same call with request_id once approved.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        keep: { type: 'string', description: 'Key of the task that stays.' },
+        other: { type: 'string', description: 'Key of the task that is a duplicate / the old version.' },
+        action: { type: 'string', enum: ['duplicate', 'new_version', 'not_duplicate'] },
+        comment_ids: { type: 'array', items: { type: 'string' }, description: 'new_version only: ids of live comments of `other` to move to `keep`.' },
+        confirm_data_loss: { type: 'boolean', description: 'duplicate only: archive `other` with its live files/comments/open subtasks. Only after your human confirmed.' },
+        request_id: { type: 'integer', description: 'The approved owner request number, when `other` is in work.' },
+        agent_name: { type: 'string' },
+      },
+      required: ['keep', 'other', 'action', 'agent_name'],
+    },
+  },
+  {
     name: 'get_owner_request',
     description: 'The state of an owner request: pending, approved, rejected (with the owner\'s note), used or expired, and what it covers.',
     inputSchema: {

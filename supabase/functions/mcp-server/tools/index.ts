@@ -4,6 +4,7 @@ import { addComment } from './addComment.ts'
 import { archiveComment, restoreComment, updateComment } from './commentArchive.ts'
 import { createTaskRevision, getEditPolicy, listDescriptionVersions, restoreDescriptionVersion } from './editPolicy.ts'
 import { deleteAttachment, getOwnerRequest, purgeTask, purgeTrash } from './ownerRequests.ts'
+import { listPossibleDuplicates, resolveDuplicate } from './duplicates.ts'
 import { archiveAttachment, restoreAttachment } from './archiveAttachment.ts'
 import { attachEpicFile } from './attachEpicFile.ts'
 import { attachSprintFile } from './attachSprintFile.ts'
@@ -56,6 +57,8 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   purge_task: purgeTask,
   purge_trash: purgeTrash,
   get_owner_request: getOwnerRequest,
+  list_possible_duplicates: listPossibleDuplicates,
+  resolve_duplicate: resolveDuplicate,
   create_task_revision: createTaskRevision,
   list_description_versions: listDescriptionVersions,
   restore_description_version: restoreDescriptionVersion,

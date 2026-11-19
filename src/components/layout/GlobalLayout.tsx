@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
+import { DuplicatesBar } from '@/components/common/Duplicates'
 import { projectPath, sectionFromPathname } from '@/lib/projectRoutes'
 import { LeftSidebar } from './LeftSidebar'
 import { MobileBottomBar } from './MobileBottomBar'
@@ -113,6 +114,7 @@ export function GlobalLayout({ children }: GlobalLayoutProps) {
       <UpdateBanner />
       <WorkTransitionModal />
       <OwnerRequestsInbox />
+      <DuplicatesBar />
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {sidebarOpen && (
           <div

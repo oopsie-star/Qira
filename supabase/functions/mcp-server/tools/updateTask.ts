@@ -3,6 +3,7 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.8
 import { checkCrossAgentConflict, resolveAgentName } from './agentGate.ts'
 import { editRefusal, lineDiff } from './editPolicy.ts'
 import { fileOrApply, parseRequestId } from './ownerRequests.ts'
+import { possibleDuplicates, withDuplicates } from './duplicates.ts'
 import { ToolError } from './errors.ts'
 import {
   resolveEpicByKeyOrTitle,
@@ -145,5 +146,10 @@ export async function updateTask(admin: SupabaseClient, args: UpdateTaskArgs) {
   })
   if (auditError) console.error('[mcp-server] Failed to record agent_audit_log', auditError.message)
 
-  return { ...data, ...(editMode ? { edit_mode: editMode } : {}) }
+  const answer = { ...data, ...(editMode ? { edit_mode: editMode } : {}) }
+  // Stage 5: a new title is checked against live tasks of the project.
+  if (args.title !== undefined && args.title !== task.title) {
+    return withDuplicates(answer, await possibleDuplicates(admin, task.project_id, args.title, task.id, task.epic_id ?? null))
+  }
+  return answer
 }
