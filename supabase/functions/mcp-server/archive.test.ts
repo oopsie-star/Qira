@@ -42,7 +42,7 @@ function task(key: string, status: string, extra: Record<string, unknown> = {}) 
 
 function fixture() {
   Deno.env.set('MCP_AGENT_EMAIL', 'mcp-agent@test')
-  return new FakeAdmin({
+  const admin = new FakeAdmin({
     projects: [{ id: PROJECT, key: 'MOMNA', name: 'Momna' }],
     profiles: [{ id: 'agent', email: 'mcp-agent@test' }],
     tasks: [
@@ -58,6 +58,16 @@ function fixture() {
     agent_audit_log: [],
     task_links: [],
   })
+  // Stands in for public.search_tasks: only the status rule matters here (the
+  // matching itself is SQL, checked against the live DB after the migration).
+  admin.rpcHandlers.search_tasks = (p, db) => ({
+    data: db.tables.tasks
+      .filter((t) => String(t.title).toLowerCase().includes(String(p.p_query).toLowerCase()))
+      .filter((t) => p.p_include_archived || !isHiddenTaskStatus(t.status as string))
+      .map((t) => ({ ...t, matched_in: 'title' })),
+    error: null,
+  })
+  return admin
 }
 
 const keys = (rows: { key: string }[]) => rows.map((r) => r.key).sort()
@@ -75,6 +85,20 @@ Deno.test('search_tasks with include_archived returns them, each marked archived
   for (const t of tasks) {
     assertEquals((t as { archived?: boolean }).archived === true, t.key !== 'MOMNA-1206', t.key)
   }
+})
+
+Deno.test('search_tasks passes the query, project and archive flag to public.search_tasks', async () => {
+  const admin = fixture()
+  await searchTasks(admin as never, { query: '  MOMNA-989 ', project: 'MOMNA' })
+  assertEquals(admin.rpcCalls.at(-1), {
+    fn: 'search_tasks',
+    params: { p_query: 'MOMNA-989', p_project_id: PROJECT, p_include_archived: false, p_limit: 25 },
+  })
+})
+
+Deno.test('search_tasks says where each task matched', async () => {
+  const { tasks } = await searchTasks(fixture() as never, { query: TITLE })
+  assertEquals(tasks.map((t) => t.matched_in), ['title'])
 })
 
 Deno.test('search_tasks keeps cancelled tasks visible — cancelled is a decision, not an archive', async () => {

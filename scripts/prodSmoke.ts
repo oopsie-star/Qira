@@ -78,6 +78,8 @@ const checks: Check[] = [
   ['Task drawer', 'take in work (rpc)', () => supabase.rpc('take_in_work', { p_task: ID, p_comment: 'smoke check only' }), '42501'],
   ['Task drawer', 'back to to do (rpc)', () => supabase.rpc('return_to_todo', { p_task: ID, p_comment: 'smoke check only' }), '42501'],
   ['Task drawer', 'edit policy (rpc)', () => supabase.rpc('task_edit_policy', { p_task: ID }), '42501'],
+  // Command palette and MCP search_tasks — anon may not execute it.
+  ['Search', 'search tasks (rpc)', () => supabase.rpc('search_tasks', { p_query: 'smoke', p_limit: 1 }), '42501'],
   ['Task drawer', 'new revision (rpc)', () =>
     supabase.rpc('create_task_revision', { p_task: ID, p_title: null, p_description: null, p_attachments: [], p_comment_ids: [], p_reason: 'smoke' }), '42501'],
   // File gateway: the owners' panel reads these (anon: no grant at all), the
@@ -174,6 +176,21 @@ async function signedInChecks() {
       notesError?.message ?? `${paths.length} attached, ${named.length} named`)
 
     await fileGatewayChecks(user, auth.session!.access_token, paths[0], project.id as string)
+
+    // Search, as the command palette asks: the fixture by its key (any form)
+    // and by its words in another order — and only TEST rows come back.
+    const fixtureKey = (task as { key: string }).key
+    for (const [label, q] of [
+      ['by key', fixtureKey],
+      ['by key, lower case, space', fixtureKey.toLowerCase().replace('-', ' ')],
+      ['by words in any order', 'delete fixture smoke'],
+    ] as const) {
+      const { data: hits, error: searchError } = await user.rpc('search_tasks', { p_query: q, p_limit: 12 })
+      const rows = (hits ?? []) as { id: string; project_id: string; matched_in: string }[]
+      const first = rows[0]
+      report(!searchError && first?.id === taskId && rows.every((r) => r.project_id === project.id), 'Search', label,
+        searchError?.message ?? (first ? `first: ${first.id === taskId ? 'fixture' : 'other'} (${first.matched_in}), ${rows.length} rows` : 'nothing'))
+    }
 
     // Stage 5, as the bar and the drawer ask.
     const { error: dupListError } = await user.rpc('list_possible_duplicates', { p_project: project.id })

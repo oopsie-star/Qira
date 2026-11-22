@@ -51,14 +51,12 @@ export function CommandPalette() {
   // Debounced global task search (RLS limits to the user's projects).
   useEffect(() => {
     if (!open) return
-    const safe = query.trim().replace(/[%,()\\]/g, '')
-    if (!safe) { setTaskHits([]); return }
+    const text = query.trim()
+    if (!text) { setTaskHits([]); return }
     const handle = window.setTimeout(async () => {
-      const { data } = await supabase
-        .from('tasks')
-        .select('id,key,title,project_id')
-        .or(`title.ilike.%${safe}%,key.ilike.%${safe}%`)
-        .limit(12)
+      // public.search_tasks — the same search as MCP: any key form first, then
+      // title, then description; archived/deleted left out.
+      const { data } = await supabase.rpc('search_tasks', { p_query: text, p_limit: 12 })
       setTaskHits((data ?? []) as TaskHit[])
     }, 180)
     return () => window.clearTimeout(handle)

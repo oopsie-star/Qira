@@ -22,6 +22,7 @@ import { isFreshTask, isSuperseded, isTaskBlocked } from '@/lib/ops'
 import { canDeleteAttachment, canEditAuthoredContent, canExportEpic, canManageProject } from '@/lib/permissions'
 import { exportEpicToZip } from '@/lib/epicExport'
 import { useCurrentProjectKey } from '@/lib/projectRoutes'
+import { matchesTaskSearch, parseTaskSearch } from '@/lib/taskSearch'
 import { EPIC_COLORS, EPIC_STATUS_OPTIONS, isTerminalStatus, type Epic, type Profile, type Sprint, type Task, type TaskStatus } from '@/types'
 import { useStore } from '@/store'
 
@@ -684,18 +685,13 @@ export function BacklogView() {
   // sections can surface ones whose parent lives elsewhere (e.g. a subtask in a
   // sprint whose parent isn't) — Jira shows those; hiding them looked like "0".
   const filteredTasks = useMemo(() => {
-    const query = search.trim().toLowerCase()
+    const query = parseTaskSearch(search)
     const activeQuickFilters = quickFilters
       .map((filterId) => quickFilterMap[filterId])
       .filter(Boolean)
 
     function matchesQueryText(task: Task) {
-      return !query || [
-        task.key,
-        task.title,
-        task.description,
-        ...task.labels,
-      ].join(' ').toLowerCase().includes(query)
+      return matchesTaskSearch(task, query)
     }
 
     // BacklogRow renders a task's subtasks unconditionally once the parent row
@@ -836,8 +832,13 @@ export function BacklogView() {
   const epicSections = useMemo(
     () => sortedEpics
       .map((epic) => {
+        // Root tasks, plus subtasks whose parent is not in this epic's own list —
+        // most often a parent that was archived (terminal tasks leave the
+        // backlog): without this the live subtask showed nowhere at all, with
+        // or without a search (MOMNA-989 under the archived MOMNA-320).
+        const inEpicDirect = (task: Task) => task.epic_id === epic.id && !task.sprint_id
         const directTasks = sortTasksByDiscipline(
-          rootTasks.filter((task) => task.epic_id === epic.id && !task.sprint_id),
+          filteredTasks.filter((task) => inEpicDirect(task) && orphanInSection(task, inEpicDirect)),
           tasks,
           taskLinks,
           members,
@@ -867,7 +868,7 @@ export function BacklogView() {
         const rightFresh = fresh(right)
         return leftFresh === rightFresh ? 0 : leftFresh ? -1 : 1
       }),
-    [hasActiveFilters, rootTasks, sortedEpics, allSprintSections, tasks, taskLinks, members, placeholders, projectMembers]
+    [hasActiveFilters, filteredTasks, orphanInSection, sortedEpics, allSprintSections, tasks, taskLinks, members, placeholders, projectMembers]
   )
 
   const firstExpandedSectionKey = useMemo(() => {

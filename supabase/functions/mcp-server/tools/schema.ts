@@ -617,11 +617,12 @@ export const TOOL_SCHEMAS: McpToolSchema[] = [
   },
   {
     name: 'search_tasks',
-    description: 'Search tasks by a substring match on title and description. Archived and deleted tasks are left out unless you pass include_archived: true.',
+    description:
+      'Search tasks by key or text. A key in any form ("MOMNA-989", "momna 989", "989") returns that task first. Text matches the whole phrase or every word in any order, across title, description and labels, ignoring case, ё/е and dash kinds. Title matches rank above description matches; each result says matched_in (key | title | description). Archived and deleted tasks are left out unless you pass include_archived: true.',
     inputSchema: {
       type: 'object',
       properties: {
-        query: { type: 'string' },
+        query: { type: 'string', description: 'A task key or number, a phrase, or several words.' },
         project: { type: 'string', description: 'Optional — restrict to one project by key.' },
         include_archived: {
           type: 'boolean',

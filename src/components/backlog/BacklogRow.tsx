@@ -11,6 +11,7 @@ import { DISCIPLINE_LABELS, taskDisciplines, type Discipline } from '@/lib/disci
 import { getSupersededByLink, isSuperseded, isTaskBlocked, isUnstartedTodo } from '@/lib/ops'
 import { useStore } from '@/store'
 import { workStartedSummary } from '@/lib/workStart'
+import { matchesTaskSearch, parseTaskSearch } from '@/lib/taskSearch'
 import { isUniversalTask, type IssueType, type Task } from '@/types'
 
 const disciplineIconAndClasses: Record<Discipline, { icon: typeof Target; className: string }> = {
@@ -48,10 +49,6 @@ interface BacklogRowProps {
   dragDisabled?: boolean
   /** Active backlog search text — when set, only subtasks matching it are shown (instead of all of them). */
   searchQuery?: string
-}
-
-function matchesSearchText(task: Task, query: string) {
-  return [task.key, task.title, task.description, ...task.labels].join(' ').toLowerCase().includes(query)
 }
 
 const issueTypeClasses: Record<IssueType, string> = {
@@ -109,7 +106,7 @@ export function BacklogRow({ task, index, mobile = false, dragDisabled = false, 
   const isOpen = task.id === openTaskId
   const isSelected = selectedTaskIds.includes(task.id)
   const bulkActive = selectedTaskIds.length > 0
-  const searchText = (searchQuery ?? '').trim().toLowerCase()
+  const search = useMemo(() => parseTaskSearch(searchQuery ?? ''), [searchQuery])
   const subtasks = useMemo(() => {
     const all = tasks
       .filter((t) => t.parent_task_id === task.id)
@@ -122,8 +119,8 @@ export function BacklogRow({ task, index, mobile = false, dragDisabled = false, 
     // A subtask that matched the query is what pulled this parent row into
     // view in the first place — only show the ones that actually match
     // instead of dumping every sibling subtask alongside it.
-    return searchText ? all.filter((t) => matchesSearchText(t, searchText)) : all
-  }, [tasks, task.id, searchText, taskLinks])
+    return search ? all.filter((t) => matchesTaskSearch(t, search)) : all
+  }, [tasks, task.id, search, taskLinks])
   const subtaskCount = subtasks.length
   const [subtasksExpanded, setSubtasksExpanded] = useState(true)
 
