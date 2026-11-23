@@ -22,7 +22,7 @@ import { isFreshTask, isSuperseded, isTaskBlocked } from '@/lib/ops'
 import { canDeleteAttachment, canEditAuthoredContent, canExportEpic, canManageProject } from '@/lib/permissions'
 import { exportEpicToZip } from '@/lib/epicExport'
 import { useCurrentProjectKey } from '@/lib/projectRoutes'
-import { matchesTaskSearch, parseTaskSearch } from '@/lib/taskSearch'
+import { OWN_MATCH_RANK, matchesTaskSearch, parseTaskSearch, rankTaskSearch } from '@/lib/taskSearch'
 import { EPIC_COLORS, EPIC_STATUS_OPTIONS, isTerminalStatus, type Epic, type Profile, type Sprint, type Task, type TaskStatus } from '@/types'
 import { useStore } from '@/store'
 
@@ -589,6 +589,37 @@ function TaskListSection({
   )
 }
 
+// The task the search names — by its key or its title — shown above every
+// section. Without it a search for "MOMNA-989" left the task itself wherever
+// its epic/sprint and manual order put it, often below the dozen tasks that
+// merely mention it.
+function SearchTopMatches({ matches, where }: { matches: Task[]; where: (task: Task) => string }) {
+  const { t } = useI18n()
+  const setOpenTaskId = useStore((state) => state.setOpenTaskId)
+  if (matches.length === 0) return null
+  return (
+    <section className="rounded-[20px] border border-qira-pistachio/40 bg-surface-card px-3 py-3">
+      <h3 className="px-1 pb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{t('backlog.searchTopMatches')}</h3>
+      <ul className="space-y-1">
+        {matches.map((task) => (
+          <li key={task.id}>
+            <button
+              type="button"
+              onClick={() => setOpenTaskId(task.id)}
+              className="flex w-full min-w-0 items-center gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-slate-50"
+            >
+              <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">{task.key}</span>
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">{task.title}</span>
+              <span className="hidden shrink-0 truncate text-xs text-slate-400 sm:block sm:max-w-[30%]">{where(task)}</span>
+              <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{t(`status.${task.status}`)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 export function BacklogView() {
   const { profile } = useAuthContext()
   const { t } = useI18n()
@@ -734,6 +765,29 @@ export function BacklogView() {
   }, [assigneeFilter, epicFilter, quickFilterMap, quickFilters, search, taskLinks, tasks])
 
   const rootTasks = useMemo(() => filteredTasks.filter((task) => !task.parent_task_id), [filteredTasks])
+
+  // Tasks the search names by key or title, best first (key, then title phrase,
+  // then title words; ties keep the backlog order). Mentions stay in sections.
+  const topMatches = useMemo(() => {
+    const query = parseTaskSearch(search)
+    if (!query) return []
+    return filteredTasks
+      .map((task) => ({ task, rank: rankTaskSearch(task, query) }))
+      .filter((hit): hit is { task: Task; rank: number } => hit.rank !== null && hit.rank <= OWN_MATCH_RANK)
+      .sort((left, right) => left.rank - right.rank)
+      .slice(0, 8)
+      .map(({ task }) => task)
+  }, [filteredTasks, search])
+
+  const matchLocation = useMemo(() => {
+    const epicTitle = new Map(epics.map((epic) => [epic.id, epic.title]))
+    const sprintName = new Map(sprints.map((sprint) => [sprint.id, sprint.name]))
+    return (task: Task) => [
+      task.sprint_id ? sprintName.get(task.sprint_id) : null,
+      task.epic_id ? epicTitle.get(task.epic_id) : null,
+      task.parent_task_id ? allTasks.find((other) => other.id === task.parent_task_id)?.key : null,
+    ].filter(Boolean).join(' · ')
+  }, [epics, sprints, allTasks])
 
   // A subtask should appear in a section only when its parent is NOT already in
   // that same section (otherwise it stays nested under the parent).
@@ -1113,7 +1167,8 @@ export function BacklogView() {
             </section>
 
             <div className="space-y-3">
-              {showGlobalEmptyState ? (
+              <SearchTopMatches matches={topMatches} where={matchLocation} />
+              {showGlobalEmptyState && topMatches.length === 0 ? (
                 <section className="rounded-[20px] border border-slate-200 bg-surface-card px-4 py-6 text-sm text-slate-500">
                   <p>{t('backlog.noVisibleIssues')}</p>
                   <button

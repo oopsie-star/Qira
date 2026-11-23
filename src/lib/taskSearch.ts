@@ -48,11 +48,28 @@ export function parseTaskSearch(raw: string): TaskSearchQuery | null {
   return { phrase, words, key, keyNumber }
 }
 
-export function matchesTaskSearch(task: SearchableTask, query: TaskSearchQuery | null): boolean {
-  if (!query) return true
+/**
+ * How well a task matches — the same ranks as public.search_tasks:
+ * 0 its key, 1 title has the phrase, 2 title has every word, 3 text has the
+ * phrase, 4 text has every word; null = no match. 0–2 are the task itself
+ * ("by its number or its name"); 3–4 are tasks that merely mention it.
+ */
+export function rankTaskSearch(task: SearchableTask, query: TaskSearchQuery): number | null {
   const lk = task.key.toLowerCase()
-  if (query.key && lk === query.key) return true
-  if (query.keyNumber && lk.endsWith(`-${query.keyNumber}`)) return true
+  if (query.key && lk === query.key) return 0
+  if (query.keyNumber && lk.endsWith(`-${query.keyNumber}`)) return 0
+  const title = normalizeSearchText(task.title)
+  if (title.includes(query.phrase)) return 1
+  if (query.words.every((w) => title.includes(w))) return 2
   const all = normalizeSearchText([task.key, task.title, task.description ?? '', ...(task.labels ?? [])].join(' '))
-  return all.includes(query.phrase) || query.words.every((w) => all.includes(w))
+  if (all.includes(query.phrase)) return 3
+  if (query.words.every((w) => all.includes(w))) return 4
+  return null
+}
+
+/** Rank at or below this = the task itself, not a mention of it. */
+export const OWN_MATCH_RANK = 2
+
+export function matchesTaskSearch(task: SearchableTask, query: TaskSearchQuery | null): boolean {
+  return !query || rankTaskSearch(task, query) !== null
 }
