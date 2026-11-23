@@ -7,6 +7,7 @@ import { getErrorMessage } from '@/lib/errors'
 import { useI18n } from '@/lib/i18n'
 import { displayFilename, isImage, previewKind, safeFilename } from '@/lib/attachments'
 import { fileUrl, fileUrls, removeStoredFiles } from '@/lib/fileGateway'
+import { useFilePurpose } from '@/lib/filePurpose'
 import { useStore } from '@/store'
 import { AttachmentPreview } from './AttachmentPreview'
 
@@ -80,6 +81,7 @@ export function AttachmentUpload({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const recordedChunksRef = useRef<Blob[]>([])
   const recordTimerRef = useRef<number | null>(null)
+  const filePurpose = useFilePurpose()
 
   useEffect(() => {
     let active = true
@@ -91,7 +93,8 @@ export function AttachmentUpload({
       }
 
       // Through the file gateway: checked at every request, no signed URLs.
-      const urls = await fileUrls(attachments).catch(() => new Map<string, string>())
+      // In an archived task its files are archive, opened as such (FilePurposeContext).
+      const urls = await fileUrls(attachments, filePurpose).catch(() => new Map<string, string>())
 
       if (active) {
         setSignedAttachments(attachments.map((path) => ({ path, signedUrl: urls.get(path) ?? null })))
@@ -102,7 +105,7 @@ export function AttachmentUpload({
     return () => {
       active = false
     }
-  }, [attachments])
+  }, [attachments, filePurpose])
 
   // Re-asks the server just before a change, so a tab that has not polled
   // since a deploy is still caught. Returns true when the change may go ahead.

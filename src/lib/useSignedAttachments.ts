@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fileUrls } from '@/lib/fileGateway'
+import { useFilePurpose } from '@/lib/filePurpose'
 
 export interface SignedAttachment {
   path: string
@@ -16,9 +17,10 @@ export function useSignedAttachments(attachments: string[]): {
   urlByPath: Map<string, string>
 } {
   const [signed, setSigned] = useState<SignedAttachment[]>([])
+  const purpose = useFilePurpose()
 
   // Stable dependency key so re-renders with an equal array don't refetch.
-  const key = attachments.join('|')
+  const key = `${purpose}#${attachments.join('|')}`
 
   useEffect(() => {
     let active = true
@@ -28,7 +30,7 @@ export function useSignedAttachments(attachments: string[]): {
         setSigned([])
         return
       }
-      const urls = await fileUrls(attachments).catch(() => new Map<string, string>())
+      const urls = await fileUrls(attachments, purpose).catch(() => new Map<string, string>())
       if (active) setSigned(attachments.map((path) => ({ path, signedUrl: urls.get(path) ?? null })))
     }
 

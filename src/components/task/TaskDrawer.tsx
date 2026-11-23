@@ -1,7 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { TaskDuplicatePanel } from '@/components/common/Duplicates'
-import { Archive, Calendar, ChevronDown, ChevronLeft, ChevronRight, Link2, MessageSquare, Paperclip, Play, Plus, Send, RotateCcw, ShieldAlert, Sparkles, Timer, Trash2, Wand2, X } from 'lucide-react'
+import { Archive, Calendar, ChevronDown, ChevronLeft, ChevronRight, Flag, Link2, MessageSquare, Paperclip, Play, Plus, Send, RotateCcw, ShieldAlert, Sparkles, Timer, Trash2, Wand2, X } from 'lucide-react'
 import { callLLM, getLLMConfig } from '@/lib/ai'
 import type { LLMMessage } from '@/lib/ai'
 import { supabase } from '@/lib/supabase'
@@ -13,6 +13,7 @@ import { OwnerRequestCard } from '@/components/common/OwnerRequests'
 import { VoiceCommentary } from './VoiceCommentary'
 import { TaskChangeHistory } from './TaskChangeHistory'
 import { JiraDescriptionRenderer } from './JiraDescriptionRenderer'
+import { FilePurposeContext } from '@/lib/filePurpose'
 import { StatusDropdown } from './StatusDropdown'
 import { useAuthContext } from '@/auth/AuthContext'
 import { useI18n } from '@/lib/i18n'
@@ -144,10 +145,21 @@ export function TaskDrawer() {
     [tasks, openTaskId]
   )
 
-  const parentTask = useMemo(
-    () => (task?.parent_task_id ? tasks.find((item) => item.id === task.parent_task_id) ?? null : null),
-    [tasks, task]
-  )
+  // Full chain of parents, root first (grandparent › parent). Stops at a
+  // parent that isn't loaded and guards against cycles.
+  const ancestorTasks = useMemo(() => {
+    const chain: typeof tasks = []
+    const seen = new Set<string>()
+    let parentId = task?.parent_task_id ?? null
+    while (parentId && !seen.has(parentId)) {
+      seen.add(parentId)
+      const parent = tasks.find((item) => item.id === parentId)
+      if (!parent) break
+      chain.unshift(parent)
+      parentId = parent.parent_task_id
+    }
+    return chain
+  }, [tasks, task])
 
   const [draftTitle, setDraftTitle] = useState('')
   const [draftDescription, setDraftDescription] = useState('')
@@ -307,6 +319,9 @@ export function TaskDrawer() {
     ? sprints
     : sprints.filter((sprint) => !currentTask.epic_id || sprint.epic_id === currentTask.epic_id)
   const effectiveEpicId = selectedSprint ? (selectedSprint.epic_id ?? '') : (currentTask.epic_id ?? '')
+  const pathEpic = (effectiveEpicId && epics.find((epic) => epic.id === effectiveEpicId))
+    || (currentTask.epic_id ? epics.find((epic) => epic.id === currentTask.epic_id) : undefined)
+    || null
 
   const isDirty =
     draftTitle.trim() !== currentTask.title ||
@@ -540,7 +555,7 @@ export function TaskDrawer() {
   }
 
   return (
-    <>
+    <FilePurposeContext.Provider value={isArchivedStatus(currentTask.status) ? 'archive' : 'view'}>
       {/* Dimming backdrop only on small screens; on desktop the drawer is a side
           panel that leaves the backlog list visible and clickable for fast
           switching between issues (Jira-style). */}
@@ -652,15 +667,41 @@ export function TaskDrawer() {
           metaCollapsed ? 'lg:grid-cols-[1fr_44px]' : 'lg:grid-cols-[1.6fr_0.9fr]',
         ].join(' ')}>
           <div className="p-5 sm:p-6 lg:min-h-0 lg:overflow-y-auto">
-            {parentTask && (
-              <button
-                type="button"
-                onClick={() => setOpenTaskId(parentTask.id)}
-                className="mb-4 inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-200"
-              >
-                {t('task.parentIssue')}: {parentTask.key}
-              </button>
-            )}
+            {/* Where this task lives: stage (epic) › sprint › parent chain › key. */}
+            <nav
+              aria-label={t('task.path')}
+              className="mb-2 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs font-medium text-slate-500"
+            >
+              {pathEpic && (
+                <>
+                  <span className="inline-flex max-w-full items-center gap-1 truncate" title={`${t('task.epic')}: ${pathEpic.title}`}>
+                    <Flag size={12} className="shrink-0" />
+                    <span className="truncate">{pathEpic.title}</span>
+                  </span>
+                  <ChevronRight size={12} className="shrink-0 text-slate-400" />
+                </>
+              )}
+              {selectedSprint && (
+                <>
+                  <span className="max-w-full truncate" title={`${t('task.sprint')}: ${selectedSprint.name}`}>{selectedSprint.name}</span>
+                  <ChevronRight size={12} className="shrink-0 text-slate-400" />
+                </>
+              )}
+              {ancestorTasks.map((ancestor) => (
+                <span key={ancestor.id} className="inline-flex max-w-full items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setOpenTaskId(ancestor.id)}
+                    title={`${t('task.parentIssue')}: ${ancestor.key} — ${ancestor.title}`}
+                    className="max-w-full truncate rounded text-left transition hover:text-slate-900 hover:underline"
+                  >
+                    <span className="font-semibold">{ancestor.key}</span> {ancestor.title}
+                  </button>
+                  <ChevronRight size={12} className="shrink-0 text-slate-400" />
+                </span>
+              ))}
+              <span className="font-semibold text-slate-700">{currentTask.key}</span>
+            </nav>
 
             {/* Mobile/tablet: unchanged single-line input. */}
             <input
@@ -1330,6 +1371,6 @@ export function TaskDrawer() {
           }}
         />
       )}
-    </>
+    </FilePurposeContext.Provider>
   )
 }
